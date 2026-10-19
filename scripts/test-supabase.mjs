@@ -671,6 +671,243 @@ try {
   console.log(
     'PASS: historical Coins backfill, real store JWT/RLS/RPC, consent, exact debit/refund, buyer receipt and journal grants',
   )
+  step = 'goals schema, JWT/RLS and atomic Together XP'
+  const goalsExist = await db.query(
+    "select to_regclass('public.couple_goals') as name",
+  )
+  if (!goalsExist.rows[0].name)
+    await db.query(
+      await readFile(
+        'supabase/migrations/20261020090000_couple_goals.sql',
+        'utf8',
+      ),
+    )
+  await db.query(await readFile('supabase/tests/goal-privileges.sql', 'utf8'))
+  await db.query("notify pgrst,'reload schema'")
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (!(await a.from('couple_goals').select('id').limit(1)).error) break
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  const createGoal = async () =>
+    check(
+      await a.rpc('create_couple_goal', {
+        p_request_id: randomUUID(),
+        p_title: 'Вместе в Карпаты',
+        p_description: 'Локальная общая мечта',
+        p_category: 'travel',
+        p_emoji: '🏔️',
+        p_target_date: null,
+        p_expected_goals: check(
+          await a
+            .from('couple_goals')
+            .select('id')
+            .eq('creator_id', signup.user.id),
+          'Own creation history',
+        ).length,
+      }),
+      'Create goal',
+    )
+  const pendingGoalConsent = async (id) =>
+    check(
+      await a
+        .from('goal_consents')
+        .select('*')
+        .eq('goal_id', id)
+        .eq('status', 'pending')
+        .single(),
+      'Read goal consent',
+    )
+  const goalId = await createGoal()
+  const initialConsent = await pendingGoalConsent(goalId)
+  assert.ok(
+    (
+      await a.rpc('resolve_goal_consent', {
+        p_consent_id: initialConsent.id,
+        p_decision: 'accept',
+      })
+    ).error,
+    'Author cannot consent for partner',
+  )
+  check(
+    await b.rpc('resolve_goal_consent', {
+      p_consent_id: initialConsent.id,
+      p_decision: 'accept',
+    }),
+    'Accept shared goal',
+  )
+  const stepConsent = check(
+    await a.rpc('propose_goal_change', {
+      p_goal_id: goalId,
+      p_request_id: randomUUID(),
+      p_kind: 'step_add',
+      p_expected_changes: 1,
+      p_payload: { title: 'Выбрать даты', description: '', assignment: 'both' },
+    }),
+    'Propose shared step',
+  )
+  assert.equal(
+    check(
+      await a.from('goal_progress').select('*').eq('goal_id', goalId).single(),
+      'Empty server progress',
+    ).percent,
+    0,
+  )
+  check(
+    await b.rpc('resolve_goal_consent', {
+      p_consent_id: stepConsent,
+      p_decision: 'accept',
+    }),
+    'Agree to step',
+  )
+  const goalStep = check(
+    await a.from('goal_steps').select('*').eq('goal_id', goalId).single(),
+    'Read agreed step',
+  )
+  const marks = await Promise.all([
+    a.rpc('complete_goal_step', { p_step_id: goalStep.id }),
+    b.rpc('complete_goal_step', { p_step_id: goalStep.id }),
+    a.rpc('complete_goal_step', { p_step_id: goalStep.id }),
+  ])
+  marks.forEach((result) => check(result, 'Concurrent own marks'))
+  assert.equal(
+    check(
+      await a.from('goal_progress').select('*').eq('goal_id', goalId).single(),
+      'Completed server progress',
+    ).percent,
+    100,
+  )
+  const beforeGoalCoins = check(
+    await a.rpc('get_coin_summary'),
+    'Coins before goal bonus',
+  )
+  const finishGoal = check(
+    await b.rpc('propose_goal_change', {
+      p_goal_id: goalId,
+      p_request_id: randomUUID(),
+      p_kind: 'complete',
+      p_expected_changes: 0,
+      p_payload: {},
+    }),
+    'Propose mutual achievement',
+  )
+  const finishes = await Promise.all([
+    a.rpc('resolve_goal_consent', {
+      p_consent_id: finishGoal,
+      p_decision: 'accept',
+    }),
+    a.rpc('resolve_goal_consent', {
+      p_consent_id: finishGoal,
+      p_decision: 'accept',
+    }),
+  ])
+  finishes.forEach((result) => check(result, 'Idempotent mutual finish'))
+  assert.equal(
+    check(
+      await a.from('goal_reward_ledger').select('*').eq('goal_id', goalId),
+      'Single goal reward',
+    ).length,
+    1,
+  )
+  assert.equal(
+    check(
+      await a.from('space_progress').select('*').eq('space_id', space).single(),
+      '50 goal + 20 task Together XP',
+    ).together_xp,
+    70,
+  )
+  assert.deepEqual(
+    check(await a.rpc('get_coin_summary'), 'Goals do not alter Coins'),
+    beforeGoalCoins,
+  )
+  for (const table of [
+    'couple_goals',
+    'goal_consents',
+    'goal_steps',
+    'goal_step_participants',
+    'goal_step_completions',
+    'goal_events',
+    'goal_reward_ledger',
+    'goal_progress',
+  ])
+    assert.equal(
+      check(await c.from(table).select('*'), 'Goal JWT isolation').length,
+      0,
+    )
+  assert.ok(
+    (await a.from('goal_reward_ledger').delete().eq('goal_id', goalId)).error,
+    'Goal reward immutable',
+  )
+  assert.ok(
+    (await a.rpc('lock_couple_goal', { p_goal_id: goalId })).error,
+    'Internal goal helper denied',
+  )
+  const requestInfo = check(
+    await a.from('couple_goals').select('request_id').eq('id', goalId).single(),
+    'Original goal request',
+  )
+  assert.equal(
+    check(
+      await a.rpc('inspect_goal_request', {
+        p_request_id: requestInfo.request_id,
+        p_goal_id: null,
+      }),
+      'Read-only lost-response lookup',
+    ).status,
+    'completed',
+  )
+  assert.equal(
+    check(
+      await a.rpc('inspect_goal_request', {
+        p_request_id: randomUUID(),
+        p_goal_id: null,
+      }),
+      'Missing request lookup',
+    ),
+    null,
+  )
+  assert.ok(
+    (
+      await a.rpc('create_couple_goal', {
+        p_request_id: randomUUID(),
+        p_expected_goals: 0,
+        p_title: 'Вместе в Карпаты',
+        p_description: 'Локальная общая мечта',
+        p_category: 'travel',
+        p_emoji: '🏔️',
+        p_target_date: null,
+      })
+    ).error,
+    'Stale new UUID cannot duplicate goal',
+  )
+  assert.equal(
+    (
+      await db.query(
+        await readFile('supabase/tests/together-xp-audit.sql', 'utf8'),
+      )
+    ).rowCount,
+    0,
+  )
+  const unfinishedGoal = await createGoal()
+  check(
+    await b.rpc('resolve_goal_consent', {
+      p_consent_id: (await pendingGoalConsent(unfinishedGoal)).id,
+      p_decision: 'accept',
+    }),
+    'Activate goal before departure',
+  )
+  const abandoned = check(
+    await a.rpc('propose_goal_change', {
+      p_goal_id: unfinishedGoal,
+      p_request_id: randomUUID(),
+      p_kind: 'pause',
+      p_expected_changes: 1,
+      p_payload: {},
+    }),
+    'Pending pause before leave',
+  )
+  console.log(
+    'PASS: goals real JWT/RLS, bilateral consent, shared steps, server progress, concurrent finish +50 once and unchanged Coins',
+  )
   const pendingJoint = await createTask('joint')
   check(
     await b.rpc('respond_task', { p_task_id: pendingJoint, p_accept: true }),
@@ -706,7 +943,7 @@ try {
       await a.from('space_progress').select('*').eq('space_id', space).single(),
       'Historic Together XP survives',
     ).together_xp,
-    20,
+    70,
   )
   assert.equal(
     check(
@@ -737,6 +974,90 @@ try {
   console.log(
     'PASS: departure cancels pending purchases with exact refund, keeps completed spends and hides partner history',
   )
+  assert.equal(
+    check(
+      await a
+        .from('couple_goals')
+        .select('*')
+        .eq('id', unfinishedGoal)
+        .single(),
+      'Goal closed on exit',
+    ).status,
+    'closed',
+  )
+  assert.equal(
+    check(
+      await a.from('goal_consents').select('*').eq('id', abandoned).single(),
+      'Consent void on exit',
+    ).status,
+    'void',
+  )
+  assert.equal(
+    check(await b.from('couple_goals').select('*'), 'Former member goal access')
+      .length,
+    0,
+  )
+  const rejoinToken = check(
+    await a.rpc('create_couple_invitation', { p_email: email('b') }),
+    'Invite original partner back',
+  )
+  check(
+    await b.rpc('resolve_couple_invitation', {
+      p_token: rejoinToken,
+      p_accept: true,
+    }),
+    'Original partner rejoins',
+  )
+  assert.ok(
+    (
+      await b.rpc('propose_goal_change', {
+        p_goal_id: unfinishedGoal,
+        p_request_id: randomUUID(),
+        p_kind: 'resume',
+        p_payload: {},
+      })
+    ).error,
+    'Closed goal cannot revive',
+  )
+  check(await b.rpc('leave_couple_space'), 'Leave disposable pair again')
+  const newPartnerToken = check(
+    await a.rpc('create_couple_invitation', { p_email: email('c') }),
+    'Invite different temporary partner',
+  )
+  check(
+    await c.rpc('resolve_couple_invitation', {
+      p_token: newPartnerToken,
+      p_accept: true,
+    }),
+    'New partner joins',
+  )
+  for (const table of [
+    'couple_goals',
+    'goal_consents',
+    'goal_steps',
+    'goal_step_participants',
+    'goal_step_completions',
+    'goal_events',
+    'goal_reward_ledger',
+    'goal_progress',
+  ])
+    assert.equal(
+      check(
+        await c.from(table).select('*'),
+        'No old goal history for new partner',
+      ).length,
+      0,
+    )
+  assert.equal(
+    check(
+      await c.from('space_progress').select('*').eq('space_id', space).single(),
+      'Space keeps historic XP',
+    ).together_xp,
+    70,
+  )
+  console.log(
+    'PASS: goal closure/void on departure, original rejoin remains closed, new partner sees aggregate XP without private goal history',
+  )
   console.log(
     'PASS: independent departure removes API visibility, closes tasks and preserves earned progress',
   )
@@ -744,8 +1065,18 @@ try {
   console.error(`FAIL: ${step} (${error.code ?? error.name ?? 'error'})`)
   process.exitCode = 1
 } finally {
-  for (const id of created)
-    await admin.auth.admin.deleteUser(id).catch(() => {})
+  let cleanupFailed = false
+  for (const id of created) {
+    try {
+      if ((await admin.auth.admin.deleteUser(id)).error) cleanupFailed = true
+    } catch {
+      cleanupFailed = true
+    }
+  }
+  if (cleanupFailed) {
+    console.error('FAIL: cleanup of own temporary local Auth users')
+    process.exitCode = 1
+  } else console.log('PASS: cleanup of own temporary local Auth users')
   for (const sdk of [admin, a, b, c, anon, d]) sdk.auth.stopAutoRefresh()
   await db.end()
   delete globalThis.window

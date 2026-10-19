@@ -46,7 +46,6 @@ import {
   AcceptInvitationScreen,
   CoupleScreen,
   CreateSpaceScreen,
-  FutureSection,
   InvitePartnerScreen,
 } from './features/couple/screens'
 import {
@@ -55,6 +54,11 @@ import {
   TogetherProgress,
 } from './features/tasks/screens'
 import { RewardsScreen, DemoRewardStore } from './features/rewards/screens'
+import {
+  GoalsScreen,
+  GoalDetailScreen,
+  DemoGoals,
+} from './features/goals/screens'
 import { ProfileScreen } from './features/profile/profile-screen'
 
 const queryClient = new QueryClient({
@@ -264,17 +268,7 @@ function DemoWorkspace() {
           </Card>
         }
       />
-      <Route
-        path="/goals"
-        element={
-          <Card>
-            <EmptyState
-              title="О чём мечтаете вдвоём?"
-              description="Здесь появятся ваши общие цели. Обсудите первую мечту — без спешки и соревнования."
-            />
-          </Card>
-        }
-      />
+      <Route path="/goals" element={<DemoGoals />} />
       <Route path="/rewards" element={<DemoRewardStore />} />
       <Route
         path="/us"
@@ -319,14 +313,9 @@ function RealWorkspace() {
       <Route element={<ProtectedRoute />}>
         <Route path="/" element={<TodayScreen />} />
         <Route path="/tasks" element={<TasksScreen />} />
-        <Route
-          path="/goals"
-          element={<FutureSection title="Ваши общие цели" />}
-        />
-        <Route
-          path="/rewards"
-          element={<RewardsScreen />}
-        />
+        <Route path="/goals" element={<GoalsScreen />} />
+        <Route path="/goals/:goalId" element={<GoalDetailScreen />} />
+        <Route path="/rewards" element={<RewardsScreen />} />
         <Route
           path="/us"
           element={
@@ -372,6 +361,7 @@ function Shell() {
   }
   const title =
     navigation.find((item) => item.path === location.pathname)?.title ??
+    (location.pathname.startsWith('/goals/') ? 'Ваша цель' : undefined) ??
     extraTitles[location.pathname] ??
     'Сегодня'
   function changeTheme() {
