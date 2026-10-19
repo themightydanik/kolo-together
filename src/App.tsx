@@ -49,8 +49,12 @@ import {
   CreateSpaceScreen,
   FutureSection,
   InvitePartnerScreen,
-  PersonalHome,
 } from './features/couple/screens'
+import {
+  TodayScreen,
+  TasksScreen,
+  TogetherProgress,
+} from './features/tasks/screens'
 import { ProfileScreen } from './features/profile/profile-screen'
 
 const queryClient = new QueryClient({
@@ -335,8 +339,8 @@ function RealWorkspace() {
       <Route path="/auth/callback" element={<CallbackScreen />} />
       <Route path="/auth/update-password" element={<UpdatePasswordScreen />} />
       <Route element={<ProtectedRoute />}>
-        <Route path="/" element={<PersonalHome />} />
-        <Route path="/tasks" element={<FutureSection title="Ваши дела" />} />
+        <Route path="/" element={<TodayScreen />} />
+        <Route path="/tasks" element={<TasksScreen />} />
         <Route
           path="/goals"
           element={<FutureSection title="Ваши общие цели" />}
@@ -345,7 +349,15 @@ function RealWorkspace() {
           path="/rewards"
           element={<FutureSection title="Награды со смыслом" />}
         />
-        <Route path="/us" element={<CoupleScreen />} />
+        <Route
+          path="/us"
+          element={
+            <div className="space-y-5">
+              <TogetherProgress />
+              <CoupleScreen />
+            </div>
+          }
+        />
         <Route path="/profile" element={<ProfileScreen />} />
         <Route path="/space/create" element={<CreateSpaceScreen />} />
         <Route path="/space/invite" element={<InvitePartnerScreen />} />
