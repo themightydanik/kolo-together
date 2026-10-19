@@ -310,6 +310,10 @@ export type Database = {
     }
     Views: { goal_progress: { Row: GoalProgress; Relationships: [] } }
     Functions: {
+      inspect_goal_request: {
+        Args: { p_request_id: string; p_goal_id: string | null }
+        Returns: { id: string; status: string; kind: string } | null
+      }
       can_read_goal: { Args: { p_goal_id: string }; Returns: boolean }
       can_read_goal_step: { Args: { p_step_id: string }; Returns: boolean }
       create_couple_goal: {
@@ -320,6 +324,7 @@ export type Database = {
           p_category: GoalCategory
           p_emoji: string
           p_target_date: string | null
+          p_expected_goals: number
         }
         Returns: string
       }
@@ -329,6 +334,7 @@ export type Database = {
           p_request_id: string
           p_kind: GoalChangeKind
           p_payload: GoalPayload
+          p_expected_changes: number
         }
         Returns: string
       }

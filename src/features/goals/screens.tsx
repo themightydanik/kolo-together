@@ -12,6 +12,8 @@ import type {
   GoalStep,
 } from '../../lib/database.types'
 import { useGoals, useGoalAction, type GoalsWorkspace } from './api'
+import { useGoalIntent } from './intents'
+import { GoalRecovery } from './recovery'
 import { GoalForm, StepForm } from './forms'
 import {
   goalCategories,
@@ -89,10 +91,15 @@ export function GoalCard({
   )
 }
 export function GoalsScreen() {
+  const { session } = useAuth()
   const query = useGoals()
   const [create, setCreate] = useState(false)
   const [filter, setFilter] = useState('active')
   const [visible, setVisible] = useState(20)
+  const unresolved = useGoalIntent(
+    session!.user.id,
+    `create:${query.data?.couple?.space.id ?? ''}`,
+  )
   if (query.isPending) return <LoadingState />
   if (query.isError)
     return <ReadError error={query.error} retry={() => void query.refetch()} />
@@ -130,6 +137,11 @@ export function GoalsScreen() {
         <Plus size={18} aria-hidden="true" />
         Новая цель
       </Button>
+      {unresolved && !create && (
+        <Card>
+          <GoalRecovery intent={unresolved} />
+        </Card>
+      )}
       {create && hasPartner && (
         <Card>
           <GoalForm close={() => setCreate(false)} />
@@ -191,7 +203,7 @@ export function ConsentCard({
   data: GoalsWorkspace
 }) {
   const { session, online } = useAuth()
-  const action = useGoalAction()
+  const action = useGoalAction(data)
   const me = session!.user.id
   const other = data.goals.find((g) => g.id === c.goal_id)
   const assignment =
@@ -303,7 +315,7 @@ export function GoalStepCard({
   edit: () => void
 }) {
   const { session, online } = useAuth()
-  const action = useGoalAction()
+  const action = useGoalAction(data)
   const me = session!.user.id
   const participants = data.participants.filter((p) => p.step_id === step.id),
     done = data.completions.filter((c) => c.step_id === step.id)
@@ -357,7 +369,8 @@ export function GoalDetailScreen() {
   const { goalId } = useParams()
   const query = useGoals()
   const { online, session } = useAuth()
-  const action = useGoalAction()
+  const action = useGoalAction(query.data)
+  const unresolved = useGoalIntent(session!.user.id, `change:${goalId ?? ''}`)
   const [editing, setEditing] = useState<GoalStep | 'new' | null>(null),
     [history, setHistory] = useState(20)
   if (query.isPending) return <LoadingState />
@@ -448,8 +461,13 @@ export function GoalDetailScreen() {
           </p>
         </Card>
       )}
+      {unresolved && (
+        <Card>
+          <GoalRecovery intent={unresolved} />
+        </Card>
+      )}
       {pending && !terminal && <ConsentCard consent={pending} data={data} />}
-      {editing && canChange && (
+      {editing && canChange && !unresolved && (
         <Card>
           <StepForm
             key={editing === 'new' ? 'new' : editing.id}

@@ -1,13 +1,14 @@
-import { useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth, type AppClient } from '../auth/auth-context'
 import { collectRows } from '../tasks/api'
 import { loadCouple } from '../couple/api'
-import type {
-  GoalChangeKind,
-  GoalDecision,
-  GoalPayload,
-} from '../../lib/database.types'
+import type { GoalDecision } from '../../lib/database.types'
+import {
+  goalIntent,
+  clearGoalIntent,
+  goalIntentScope,
+  type GoalWrite,
+} from './intents'
 export async function loadGoals(client: AppClient, userId: string) {
   const [
     goals,
@@ -94,34 +95,55 @@ export function useGoals() {
     refetchInterval: 15000,
   })
 }
-export function useGoalAction() {
-  const { client } = useAuth()
+export function useGoalAction(workspace?: GoalsWorkspace) {
+  const { client, session } = useAuth()
   const cache = useQueryClient()
-  const requests = useRef(new Map<string, string>())
   return useMutation({
+    mutationKey: ['goal-action', session?.user.id],
+    networkMode: 'always',
+    retry: false,
     mutationFn: async (
       action:
-        | {
-            kind: 'propose'
-            goal: string
-            change: GoalChangeKind
-            payload: GoalPayload
-          }
+        | GoalWrite
         | { kind: 'decide'; consent: string; decision: GoalDecision }
         | { kind: 'complete-step'; step: string },
     ) => {
-      if (action.kind === 'propose') {
-        const key = JSON.stringify(action)
-        const request = requests.current.get(key) ?? crypto.randomUUID()
-        requests.current.set(key, request)
-        const result = await client!.rpc('propose_goal_change', {
-          p_goal_id: action.goal,
-          p_request_id: request,
-          p_kind: action.change,
-          p_payload: action.payload,
-        })
+      if (!navigator.onLine) throw new TypeError('offline')
+      if (action.kind === 'create' || action.kind === 'propose') {
+        const user = session!.user.id,
+          data =
+            workspace ??
+            cache.getQueryData<GoalsWorkspace>(['couple-goals', user])
+        if (!data || !data.couple) throw Error('goal_unavailable')
+        if (action.kind === 'create' && data.couple.space.id !== action.space)
+          throw Error('goal_unavailable')
+        const expected =
+          action.kind === 'create'
+            ? data.goals.filter((g) => g.creator_id === user).length
+            : data.consents.filter(
+                (c) => c.goal_id === action.goal && c.requester_id === user,
+              ).length
+        const intent = goalIntent(user, action, expected)
+        const result =
+          action.kind === 'create'
+            ? await client!.rpc('create_couple_goal', {
+                p_request_id: intent.request,
+                p_expected_goals: intent.expected,
+                p_title: action.values.title,
+                p_description: action.values.description,
+                p_category: action.values.category,
+                p_emoji: action.values.emoji,
+                p_target_date: action.values.target_date || null,
+              })
+            : await client!.rpc('propose_goal_change', {
+                p_goal_id: action.goal,
+                p_request_id: intent.request,
+                p_kind: action.change,
+                p_payload: action.payload,
+                p_expected_changes: intent.expected,
+              })
         if (result.error) throw result.error
-        requests.current.delete(key)
+        clearGoalIntent(user, goalIntentScope(action), intent.request)
         return result.data
       }
       const result =

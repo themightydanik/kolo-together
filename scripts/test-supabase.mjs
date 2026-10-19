@@ -697,6 +697,13 @@ try {
         p_category: 'travel',
         p_emoji: '🏔️',
         p_target_date: null,
+        p_expected_goals: check(
+          await a
+            .from('couple_goals')
+            .select('id')
+            .eq('creator_id', signup.user.id),
+          'Own creation history',
+        ).length,
       }),
       'Create goal',
     )
@@ -733,6 +740,7 @@ try {
       p_goal_id: goalId,
       p_request_id: randomUUID(),
       p_kind: 'step_add',
+      p_expected_changes: 1,
       p_payload: { title: 'Выбрать даты', description: '', assignment: 'both' },
     }),
     'Propose shared step',
@@ -777,6 +785,7 @@ try {
       p_goal_id: goalId,
       p_request_id: randomUUID(),
       p_kind: 'complete',
+      p_expected_changes: 0,
       p_payload: {},
     }),
     'Propose mutual achievement',
@@ -832,6 +841,52 @@ try {
     (await a.rpc('lock_couple_goal', { p_goal_id: goalId })).error,
     'Internal goal helper denied',
   )
+  const requestInfo = check(
+    await a.from('couple_goals').select('request_id').eq('id', goalId).single(),
+    'Original goal request',
+  )
+  assert.equal(
+    check(
+      await a.rpc('inspect_goal_request', {
+        p_request_id: requestInfo.request_id,
+        p_goal_id: null,
+      }),
+      'Read-only lost-response lookup',
+    ).status,
+    'completed',
+  )
+  assert.equal(
+    check(
+      await a.rpc('inspect_goal_request', {
+        p_request_id: randomUUID(),
+        p_goal_id: null,
+      }),
+      'Missing request lookup',
+    ),
+    null,
+  )
+  assert.ok(
+    (
+      await a.rpc('create_couple_goal', {
+        p_request_id: randomUUID(),
+        p_expected_goals: 0,
+        p_title: 'Вместе в Карпаты',
+        p_description: 'Локальная общая мечта',
+        p_category: 'travel',
+        p_emoji: '🏔️',
+        p_target_date: null,
+      })
+    ).error,
+    'Stale new UUID cannot duplicate goal',
+  )
+  assert.equal(
+    (
+      await db.query(
+        await readFile('supabase/tests/together-xp-audit.sql', 'utf8'),
+      )
+    ).rowCount,
+    0,
+  )
   const unfinishedGoal = await createGoal()
   check(
     await b.rpc('resolve_goal_consent', {
@@ -845,6 +900,7 @@ try {
       p_goal_id: unfinishedGoal,
       p_request_id: randomUUID(),
       p_kind: 'pause',
+      p_expected_changes: 1,
       p_payload: {},
     }),
     'Pending pause before leave',

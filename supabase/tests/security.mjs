@@ -1769,30 +1769,15 @@ test('joint buyer/provider roles are symmetric for either purchaser and readines
 })
 
 // Stage 5 goals: all authorization, transitions and concurrency run on PostgreSQL.
-const goal = async (n, options = {}) =>
-  (
-    await asUser(
-      n,
-      'select public.create_couple_goal($1,$2,$3,$4,$5,$6) as id',
-      [
-        options.request ?? randomUUID(),
-        options.title ?? 'Вместе в Карпаты',
-        options.description ?? '',
-        options.category ?? 'travel',
-        options.emoji ?? '🏔️',
-        options.date ?? null,
-      ],
-    )
-  )[0].id
-const goalChange = async (n, id, kind, payload = {}, request = randomUUID()) =>
-  (
-    await asUser(n, 'select public.propose_goal_change($1,$2,$3,$4) as id', [
-      id,
-      request,
-      kind,
-      payload,
-    ])
-  )[0].id
+const goal = async(n,options={})=> {
+ const expected=(await asUser(n,'select count(*)::integer as n from public.couple_goals where creator_id=$1',[uid(n)]))[0].n
+ return (await asUser(n,'select public.create_couple_goal($1,$2,$3,$4,$5,$6,$7) as id',[
+ options.request??randomUUID(),options.title??'Вместе в Карпаты',options.description??'',options.category??'travel',options.emoji??'🏔️',options.date??null,expected]))[0].id
+}
+const goalChange = async(n,id,kind,payload={},request=randomUUID())=> {
+ const expected=(await asUser(n,'select count(*)::integer as n from public.goal_consents where goal_id=$1 and requester_id=$2',[id,uid(n)]))[0].n
+ return (await asUser(n,'select public.propose_goal_change($1,$2,$3,$4,$5) as id',[id,request,kind,payload,expected]))[0].id
+}
 const goalDecision = (n, id, decision = 'accept') =>
   asUser(n, 'select public.resolve_goal_consent($1,$2)', [id, decision])
 const goalDone = (n, id) =>
@@ -2359,4 +2344,86 @@ test('administrative cleanup of own disposable Auth fixture does not leave dangl
       (await pool.query(`select * from public.${table}`)).rowCount,
       0,
     )
+})
+
+test('review: different UUIDs from stale create snapshots cannot create unnoticed duplicate goals',async()=>{
+ await pair()
+ const raw=()=>asUser(1,"select public.create_couple_goal($1,'Повтор мечты','','travel','🏔️',null) as id",[randomUUID()])
+ const results=await Promise.allSettled([raw(),raw()])
+ assert.equal(results.filter(r=>r.status==='fulfilled').length,1)
+ assert.equal((await pool.query('select * from public.couple_goals')).rowCount,1)
+})
+test('review: resolved consent does not let an old snapshot submit the same change with a replacement UUID',async()=>{
+ await pair();const id=await activeGoal()
+ const raw=()=>asUser(2,'select public.propose_goal_change($1,$2,$3,$4) as id',[id,randomUUID(),'step_add',{title:'Один шаг',assignment:'both'}])
+ const first=(await raw())[0].id;await goalDecision(1,first)
+ await assert.rejects(raw(),/goal_history_changed/)
+ assert.equal((await pool.query('select * from public.goal_steps')).rowCount,1)
+})
+test('review: journal grants prevent all client writes; immutable guard blocks direct rewrites while task +20 works',async()=>{
+ const space=await pair(),id=await readyGoal();await goalDecision(2,await goalChange(1,id,'complete'))
+ for(const n of [1,2,3,null])for(const sql of [
+  'update public.goal_reward_ledger set together_xp=50',
+  'delete from public.goal_reward_ledger',
+  'truncate public.goal_reward_ledger',
+  "insert into public.goal_reward_ledger(goal_id,space_id) values($1,$2)",
+ ])await assert.rejects(asUser(n,sql,sql.includes('$1')?[id,space]:[]),e=>e.code==='42501')
+ await assert.rejects(pool.query('update public.goal_reward_ledger set together_xp=50'),/goal_reward_immutable/)
+ await assert.rejects(pool.query('delete from public.goal_reward_ledger'),/goal_reward_immutable/)
+ const taskId=await task(1,{kind:'joint'});await respond(2,taskId);const i=await instance(taskId)
+ await complete(1,i.id);await complete(2,i.id)
+ assert.equal((await pool.query(await readFile('supabase/tests/together-xp-audit.sql','utf8'))).rowCount,0)
+ assert.equal((await pool.query('select together_xp::integer as xp from public.space_progress where space_id=$1',[space])).rows[0].xp,70)
+})
+test('review: completion, task award and leave race preserve both journals and shared XP',async()=>{
+ for(let attempt=0;attempt<5;attempt++){
+  if(attempt>0)await resolve(1,await invite(2,1))
+  else await pair()
+  const id=await readyGoal(),c=await goalChange(1,id,'complete')
+  const taskId=await task(1,{kind:'joint'});await respond(2,taskId);const i=await instance(taskId);await complete(1,i.id)
+  const race=await Promise.allSettled([goalDecision(2,c),goalDecision(2,c),complete(2,i.id),asUser(1,'select public.leave_couple_space()')])
+  assert.equal(race[3].status,'fulfilled')
+  assert.equal((await pool.query(await readFile('supabase/tests/together-xp-audit.sql','utf8'))).rowCount,0)
+  assert.equal((await pool.query('select * from public.goal_reward_ledger where goal_id=$1',[id])).rowCount,race[0].status==='fulfilled'||race[1].status==='fulfilled'?1:0)
+ }
+})
+test('review: 100-step boundary, full reorder and same-key replay after terminal states',async()=>{
+ await pair();const id=await activeGoal();let firstKey,firstPayload,firstConsent
+ for(let n=0;n<100;n++){
+  const key=randomUUID(),payload={title:`Шаг ${n+1}`,assignment:'both'}
+  const c=await goalChange(1,id,'step_add',payload,key);await goalDecision(2,c)
+  if(n===0){firstKey=key;firstPayload=payload;firstConsent=c}
+ }
+ assert.equal((await goalProgress(1,id)).total_steps,100)
+ await assert.rejects(goalChange(1,id,'step_add',{title:'Лишний шаг',assignment:'me'}),/invalid_goal_change/)
+ const steps=(await pool.query('select id from public.goal_steps where goal_id=$1 order by position',[id])).rows
+ const order=await goalChange(2,id,'reorder',{step_ids:steps.map(s=>s.id).reverse()});await goalDecision(1,order)
+ assert.equal((await goalProgress(1,id)).percent,0)
+ const close=await goalChange(1,id,'close');await goalDecision(2,close)
+ assert.equal(await goalChange(1,id,'step_add',firstPayload,firstKey),firstConsent)
+ await goalDecision(2,firstConsent)
+ assert.equal((await pool.query('select * from public.goal_steps where goal_id=$1',[id])).rowCount,100)
+})
+test('review: read-only XP audit reports legacy drift without rewriting earned history',async()=>{
+ const space=await pair();await pool.query('insert into public.space_progress values($1,123)',[space])
+ const id=await readyGoal();await goalDecision(2,await goalChange(1,id,'complete'))
+ assert.equal((await pool.query('select together_xp::integer as n from public.space_progress where space_id=$1',[space])).rows[0].n,173)
+ const result=await pool.query(await readFile('supabase/tests/together-xp-audit.sql','utf8'))
+ assert.equal(result.rowCount,1);assert.equal(Number(result.rows[0].difference),123)
+})
+test('review: same-key replay after completion is read only, and inspection never creates a missing request',async()=>{
+ await pair();const createKey=randomUUID(),id=await goal(1,{request:createKey})
+ await goalDecision(2,await goalPending(id));const step=await addGoalStep(1,id)
+ await goalDone(1,step);await goalDone(2,step)
+ const key=randomUUID(),c=await goalChange(1,id,'complete',{},key);await goalDecision(2,c)
+ const events=(await pool.query('select * from public.goal_events')).rowCount
+ assert.equal(await goal(1,{request:createKey}),id)
+ assert.equal(await goalChange(1,id,'complete',{},key),c)
+ await goalDecision(2,c)
+ assert.equal((await asUser(1,'select public.inspect_goal_request($1,$2) as result',[key,id]))[0].result.status,'accepted')
+ assert.equal((await asUser(1,'select public.inspect_goal_request($1,null) as result',[createKey]))[0].result.status,'completed')
+ assert.equal((await asUser(1,'select public.inspect_goal_request($1,$2) as result',[randomUUID(),id]))[0].result,null)
+ assert.equal((await asUser(2,'select public.inspect_goal_request($1,$2) as result',[key,id]))[0].result,null)
+ assert.equal((await pool.query('select * from public.goal_events')).rowCount,events)
+ assert.equal((await pool.query('select * from public.goal_reward_ledger')).rowCount,1)
 })

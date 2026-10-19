@@ -53,6 +53,16 @@ create table public.goal_reward_ledger (
  space_id uuid not null references public.couple_spaces(id) on delete cascade,
  together_xp integer not null default 50 check(together_xp=50), created_at timestamptz not null default clock_timestamp()
 );
+-- Defense in depth: client writes are already denied. Never rewrite a bonus;
+-- permit only FK cleanup after its parent goal has actually been deleted.
+create function public.protect_goal_reward() returns trigger
+language plpgsql security definer set search_path='' as $$
+begin
+ if tg_op='UPDATE' or exists(select 1 from public.couple_goals where id=old.goal_id) then raise exception 'goal_reward_immutable'; end if;
+ return old;
+end $$;
+create trigger goal_reward_immutable before update or delete on public.goal_reward_ledger for each row execute function public.protect_goal_reward();
+revoke all on function public.protect_goal_reward() from public,anon,authenticated;
 create index goals_space on public.couple_goals(space_id,created_at desc,id);
 create index goal_consents_goal on public.goal_consents(goal_id,created_at,id);
 create index goal_steps_goal on public.goal_steps(goal_id,position);
@@ -80,7 +90,7 @@ begin
  if g.status in ('pending','active','paused') and (select count(*) from public.couple_members where space_id=g.space_id and left_at is null and user_id in (g.creator_id,g.partner_id))<>2 then raise exception 'goal_unavailable'; end if;
  return g;
 end $$;
-create function public.create_couple_goal(p_request_id uuid,p_title text,p_description text,p_category text,p_emoji text,p_target_date date) returns uuid
+create function public.create_couple_goal(p_request_id uuid,p_title text,p_description text,p_category text,p_emoji text,p_target_date date,p_expected_goals integer default 0) returns uuid
 language plpgsql security definer set search_path='' as $$
 declare v_uid uuid:=public.require_verified_user(); v_space uuid; v_partner uuid; g public.couple_goals;
  v_title text:=btrim(p_title); v_description text:=btrim(coalesce(p_description,''));
@@ -98,6 +108,7 @@ begin
   if g.space_id<>v_space or (g.title,g.description,g.category,g.emoji,g.target_date) is distinct from (v_title,v_description,p_category,p_emoji,p_target_date) then raise exception 'goal_request_conflict'; end if;
   return g.id;
  end if;
+ if p_expected_goals is null or p_expected_goals<0 or p_expected_goals<>(select count(*) from public.couple_goals where creator_id=v_uid and space_id=v_space) then raise exception 'goal_history_changed'; end if;
  select user_id into v_partner from public.couple_members where space_id=v_space and user_id<>v_uid and left_at is null;
  if v_partner is null then raise exception 'partner_required'; end if;
  insert into public.couple_goals(request_id,space_id,creator_id,partner_id,title,description,category,emoji,target_date)
@@ -109,7 +120,7 @@ end $$;
 
 -- Client payload has a small fixed vocabulary. No arbitrary user IDs, XP or
 -- trusted percentages. Assignment is relative to the requester's identity.
-create function public.propose_goal_change(p_goal_id uuid,p_request_id uuid,p_kind text,p_payload jsonb) returns uuid
+create function public.propose_goal_change(p_goal_id uuid,p_request_id uuid,p_kind text,p_payload jsonb,p_expected_changes integer default 0) returns uuid
 language plpgsql security definer set search_path='' as $$
 declare v_uid uuid:=public.require_verified_user(); g public.couple_goals; c public.goal_consents; s public.goal_steps;
  v_title text; v_description text; v_id uuid; v_ids uuid[];
@@ -122,6 +133,7 @@ begin
   if c.goal_id<>g.id or c.kind<>p_kind or c.payload<>p_payload then raise exception 'goal_request_conflict'; end if;
   return c.id;
  end if;
+ if p_expected_changes is null or p_expected_changes<0 or p_expected_changes<>(select count(*) from public.goal_consents where goal_id=g.id and requester_id=v_uid) then raise exception 'goal_history_changed'; end if;
  if g.status not in ('active','paused') then raise exception 'goal_transition_denied'; end if;
  if exists(select 1 from public.goal_consents where goal_id=g.id and status='pending') then raise exception 'goal_consent_pending'; end if;
  if p_kind='resume' and g.status<>'paused' or p_kind in ('pause','step_add','step_edit','reorder','complete') and g.status<>'active' then raise exception 'goal_transition_denied'; end if;
@@ -205,6 +217,22 @@ begin
  update public.goal_consents set status=v_expected,responded_at=clock_timestamp() where id=c.id;
  insert into public.goal_events(goal_id,actor_id,kind,details) values(g.id,v_uid,'change_'||v_expected,jsonb_build_object('kind',c.kind,'consent_id',c.id));
 end $$;
+-- Recovery is a SELECT-only lookup, never a deferred write disguised as a check.
+create function public.inspect_goal_request(p_request_id uuid,p_goal_id uuid default null) returns jsonb
+language plpgsql stable security definer set search_path='' as $$
+declare v_uid uuid:=public.require_verified_user(); v_result jsonb;
+begin
+ if p_goal_id is null then
+  select jsonb_build_object('id',g.id,'status',g.status,'kind','create') into v_result from public.couple_goals g
+   where g.creator_id=v_uid and g.request_id=p_request_id and public.can_read_goal(g.id);
+ else
+  select jsonb_build_object('id',c.id,'status',c.status,'kind',c.kind) into v_result from public.goal_consents c
+   where c.requester_id=v_uid and c.request_id=p_request_id and c.goal_id=p_goal_id and public.can_read_goal(c.goal_id);
+ end if;
+ return v_result;
+end $$;
+revoke all on function public.inspect_goal_request(uuid,uuid) from public,anon,authenticated;
+grant execute on function public.inspect_goal_request(uuid,uuid) to authenticated;
 create function public.complete_goal_step(p_step_id uuid) returns void
 language plpgsql security definer set search_path='' as $$
 declare v_uid uuid:=public.require_verified_user(); g public.couple_goals; v_goal uuid; s public.goal_steps;
@@ -261,6 +289,6 @@ revoke all on public.goal_progress from public,anon,authenticated;
 grant select on public.goal_progress to authenticated;
 revoke all on public.couple_goals,public.goal_consents,public.goal_steps,public.goal_step_participants,public.goal_step_completions,public.goal_events,public.goal_reward_ledger from public,anon,authenticated;
 grant select on public.couple_goals,public.goal_consents,public.goal_steps,public.goal_step_participants,public.goal_step_completions,public.goal_events,public.goal_reward_ledger to authenticated;
-revoke all on function public.can_read_goal(uuid),public.can_read_goal_step(uuid),public.lock_couple_goal(uuid),public.create_couple_goal(uuid,text,text,text,text,date),public.propose_goal_change(uuid,uuid,text,jsonb),public.resolve_goal_consent(uuid,text),public.complete_goal_step(uuid),public.close_goals_on_departure() from public,anon,authenticated;
-grant execute on function public.can_read_goal(uuid),public.can_read_goal_step(uuid),public.create_couple_goal(uuid,text,text,text,text,date),public.propose_goal_change(uuid,uuid,text,jsonb),public.resolve_goal_consent(uuid,text),public.complete_goal_step(uuid) to authenticated;
+revoke all on function public.can_read_goal(uuid),public.can_read_goal_step(uuid),public.lock_couple_goal(uuid),public.create_couple_goal(uuid,text,text,text,text,date,integer),public.propose_goal_change(uuid,uuid,text,jsonb,integer),public.resolve_goal_consent(uuid,text),public.complete_goal_step(uuid),public.close_goals_on_departure() from public,anon,authenticated;
+grant execute on function public.can_read_goal(uuid),public.can_read_goal_step(uuid),public.create_couple_goal(uuid,text,text,text,text,date,integer),public.propose_goal_change(uuid,uuid,text,jsonb,integer),public.resolve_goal_consent(uuid,text),public.complete_goal_step(uuid) to authenticated;
 commit;

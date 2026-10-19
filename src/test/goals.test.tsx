@@ -24,6 +24,7 @@ import {
   DemoGoals,
 } from '../features/goals/screens'
 import { GoalForm, StepForm } from '../features/goals/forms'
+import { clearGoalIntent } from '../features/goals/intents'
 import { goalSchema } from '../features/goals/model'
 const query = vi.hoisted(() => vi.fn())
 vi.mock('../features/goals/api', async (original) => ({
@@ -144,9 +145,17 @@ function wrapper(children: React.ReactNode, path = '/goals', online = true) {
   )
   return { ...rendered, rpc, cache }
 }
-beforeEach(() =>
-  query.mockReturnValue({ isPending: false, isError: false, data: data() }),
-)
+beforeEach(() => {
+  sessionStorage.clear()
+  clearGoalIntent('a', 'create:space')
+  clearGoalIntent('a', 'change:goal')
+  query.mockReturnValue({
+    isPending: false,
+    isError: false,
+    data: data(),
+    refetch: vi.fn().mockResolvedValue({ data: data(), error: null }),
+  })
+})
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
@@ -212,14 +221,24 @@ test('goal creation validates fields and retries same UUID without reward or par
       data: null,
       error: { message: 'Failed to fetch' },
     })
+    .mockResolvedValueOnce({ data: null, error: null })
     .mockResolvedValueOnce({ data: 'goal', error: null })
   fireEvent.click(screen.getByRole('button', { name: 'Предложить цель' }))
   await waitFor(() =>
-    expect(screen.getByRole('alert')).toHaveTextContent('Нет связи'),
+    expect(
+      screen.getByRole('button', { name: 'Проверить прежний запрос' }),
+    ).toBeEnabled(),
   )
-  fireEvent.click(screen.getByRole('button', { name: 'Предложить цель' }))
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Проверить прежний запрос' }),
+  )
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Отправить исходный запрос повторно',
+    }),
+  )
   await waitFor(() => expect(close).toHaveBeenCalled())
-  expect(w.rpc.mock.calls[0][1]).toEqual(w.rpc.mock.calls[1][1])
+  expect(w.rpc.mock.calls[0][1]).toEqual(w.rpc.mock.calls[2][1])
   expect(w.rpc.mock.calls[0][1]).not.toHaveProperty('p_partner_id')
   expect(w.rpc.mock.calls[0][1]).not.toHaveProperty('xp')
 })
@@ -391,4 +410,192 @@ test('demo explicitly disables proposals and never shows server completion', () 
   expect(screen.getByText(/Пример · деморежим/)).toBeInTheDocument()
   expect(screen.getByRole('button')).toBeDisabled()
   expect(screen.queryByText('Вы сделали это вместе!')).not.toBeInTheDocument()
+})
+
+test('review: unknown create outcome survives form remount without posting until explicit replay', async () => {
+  const first = wrapper(<GoalForm close={vi.fn()} />)
+  first.rpc.mockResolvedValue({
+    data: null,
+    error: { message: 'Failed to fetch' },
+  })
+  fireEvent.change(await screen.findByLabelText('Название цели'), {
+    target: { value: 'Тихий отпуск' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Предложить цель' }))
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Проверить прежний запрос' }),
+    ).toBeEnabled(),
+  )
+  const args = first.rpc.mock.calls[0][1]
+  cleanup()
+  const d = data()
+  d.goals.push({ ...goal, id: 'new-goal', status: 'closed' })
+  query.mockReturnValue({ isPending: false, isError: false, data: d })
+  const second = wrapper(<GoalForm close={vi.fn()} />)
+  expect(
+    await screen.findByRole('button', { name: 'Проверить прежний запрос' }),
+  ).toBeEnabled()
+  expect(second.rpc).not.toHaveBeenCalled()
+  expect(screen.queryByLabelText('Название цели')).not.toBeInTheDocument()
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Проверить прежний запрос' }),
+  )
+  await waitFor(() =>
+    expect(second.rpc).toHaveBeenCalledWith('inspect_goal_request', {
+      p_request_id: args.p_request_id,
+      p_goal_id: null,
+    }),
+  )
+  expect(second.rpc).toHaveBeenCalledTimes(1)
+})
+test('review: reconnect never automatically posts unknown proposal; a fresh explicit discard is required for new conditions', async () => {
+  const w = wrapper(<GoalForm close={vi.fn()} />)
+  w.rpc.mockResolvedValue({ data: null, error: { message: 'Failed to fetch' } })
+  fireEvent.change(await screen.findByLabelText('Название цели'), {
+    target: { value: 'Наше путешествие' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Предложить цель' }))
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Проверить прежний запрос' }),
+    ).toBeEnabled(),
+  )
+  const before = w.rpc.mock.calls.length
+  window.dispatchEvent(new Event('offline'))
+  window.dispatchEvent(new Event('online'))
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Проверить прежний запрос' }),
+    ).toBeEnabled(),
+  )
+  expect(w.rpc).toHaveBeenCalledTimes(before)
+  expect(screen.queryByLabelText('Название цели')).not.toBeInTheDocument()
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Проверил(а) историю — начать новое действие',
+    }),
+  )
+  expect(await screen.findByLabelText('Название цели')).toBeInTheDocument()
+  expect(w.rpc).toHaveBeenCalledTimes(before)
+})
+test('review: fresh duplicate goal and step require separate explicit confirmation after lost storage', async () => {
+  const w = wrapper(<GoalForm close={vi.fn()} />)
+  fireEvent.change(await screen.findByLabelText('Название цели'), {
+    target: { value: goal.title },
+  })
+  fireEvent.change(screen.getByLabelText('Описание цели'), {
+    target: { value: goal.description },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Предложить цель' }))
+  expect(await screen.findByText(/Такая цель уже есть/)).toBeInTheDocument()
+  expect(w.rpc).not.toHaveBeenCalled()
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Создать отдельную цель с такими условиями',
+    }),
+  )
+  await waitFor(() => expect(w.rpc).toHaveBeenCalledTimes(1))
+  cleanup()
+  const d = data()
+  d.steps = [{ ...step, description: '' }]
+  d.participants = [
+    { step_id: 'step', user_id: 'a' },
+    { step_id: 'step', user_id: 'b' },
+  ]
+  query.mockReturnValue({ isPending: false, isError: false, data: d })
+  const v = wrapper(<StepForm goal="goal" close={vi.fn()} />)
+  fireEvent.change(await screen.findByLabelText('Название шага'), {
+    target: { value: step.title },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Предложить шаг' }))
+  expect(
+    await screen.findByText(/Такой шаг уже согласован/),
+  ).toBeInTheDocument()
+  expect(v.rpc).not.toHaveBeenCalled()
+})
+test('review: offline submit is rejected rather than queued for automatic reconnect', async () => {
+  const w = wrapper(<GoalForm close={vi.fn()} />, '/goals', false)
+  fireEvent.change(await screen.findByLabelText('Название цели'), {
+    target: { value: 'Без сети' },
+  })
+  fireEvent.submit(
+    screen.getByRole('button', { name: 'Предложить цель' }).closest('form')!,
+  )
+  expect(await screen.findByRole('alert')).toHaveTextContent('Нет связи')
+  window.dispatchEvent(new Event('online'))
+  await Promise.resolve()
+  expect(w.rpc).not.toHaveBeenCalled()
+})
+test('review: missing request inspection is read only; original send needs another explicit click with the saved fence', async () => {
+  const { goalIntent } = await import('../features/goals/intents')
+  const intent = goalIntent(
+    'a',
+    {
+      kind: 'create',
+      space: 'space',
+      values: {
+        title: 'Исходная мечта',
+        description: '',
+        category: 'travel',
+        emoji: '🏔️',
+        target_date: '',
+      },
+    },
+    0,
+  )
+  const w = wrapper(<GoalForm close={vi.fn()} />)
+  w.rpc
+    .mockResolvedValueOnce({ data: null, error: null })
+    .mockResolvedValue({ data: 'goal', error: null })
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Проверить прежний запрос' }),
+  )
+  expect(
+    await screen.findByRole('button', {
+      name: 'Отправить исходный запрос повторно',
+    }),
+  ).toBeEnabled()
+  expect(w.rpc).toHaveBeenCalledTimes(1)
+  expect(w.rpc.mock.calls[0][0]).toBe('inspect_goal_request')
+  window.dispatchEvent(new Event('online'))
+  await Promise.resolve()
+  expect(w.rpc).toHaveBeenCalledTimes(1)
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Отправить исходный запрос повторно' }),
+  )
+  await waitFor(() =>
+    expect(w.rpc).toHaveBeenCalledWith(
+      'create_couple_goal',
+      expect.objectContaining({
+        p_request_id: intent.request,
+        p_expected_goals: 0,
+        p_title: 'Исходная мечта',
+      }),
+    ),
+  )
+})
+test('review: completed goal can inspect a lost change response without proposing anything', async () => {
+  const { goalIntent } = await import('../features/goals/intents')
+  const intent = goalIntent(
+    'a',
+    { kind: 'propose', goal: 'goal', change: 'complete', payload: {} },
+    3,
+  )
+  const d = data()
+  d.goals = [{ ...goal, status: 'completed' }]
+  query.mockReturnValue({ data: d, isPending: false, isError: false })
+  const w = wrapper(<GoalDetailScreen />, '/goals/goal')
+  w.rpc.mockResolvedValue({
+    data: { id: 'consent', kind: 'complete', status: 'accepted' },
+    error: null,
+  })
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Проверить прежний запрос' }),
+  )
+  await waitFor(() => expect(w.rpc).toHaveBeenCalledTimes(1))
+  expect(w.rpc).toHaveBeenCalledWith('inspect_goal_request', {
+    p_request_id: intent.request,
+    p_goal_id: 'goal',
+  })
 })

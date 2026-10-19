@@ -62,8 +62,9 @@
 
 | Публичный RPC | Контракт |
 |---|---|
-| create_couple_goal | request UUID, title/description/category/emoji/target_date → goal UUID |
-| propose_goal_change | goal UUID, request UUID, kind, payload → consent UUID |
+| create_couple_goal | request UUID, title/description/category/emoji/target_date, p_expected_goals → goal UUID |
+| propose_goal_change | goal UUID, request UUID, kind, payload, p_expected_changes → consent UUID |
+| inspect_goal_request | request UUID, необязательный goal UUID → собственный найденный результат или null; только SELECT |
 | resolve_goal_consent | consent UUID, accept/decline/withdraw → void |
 | complete_goal_step | step UUID → void, исполнителя определяет auth.uid() |
 | can_read_goal, can_read_goal_step | Caller-scoped bool, нужен RLS |
@@ -109,3 +110,19 @@ Query key включает user id; AuthProvider очищает данные п�
 7. Проверить темы, узкий экран, клавиатуру, offline/online, безопасную ошибку и историю основных событий/согласий. Не показывать успешный бонус при неуспешном RPC.
 8. Только если разрешено разорвать эту staging-пару: leave закрывает незавершённые цели и void pending, не отнимает XP/Coins/старый Together XP. Возвращение прежнего партнёра не открывает цель, новый не видит старую приватную историю; общий итог XP остаётся у пространства.
 9. Direct INSERT/UPDATE/DELETE статусов, назначений, отметок, events/ledger и progress запрещены. Третья пара не читает/меняет цели по известным UUID. Для гонок использовать disposable DB-тесты, не правку облачных данных.
+
+## Заключительное review: неизвестный результат запроса
+
+Создание и предложение сохраняют одним intent исходные UUID, полный payload и счётчик собственных целей в пространстве (`p_expected_goals`) либо собственных согласований цели (`p_expected_changes`, включая activation и уже решённые). UUID не меняется при ошибке. Счётчик не обновляется при retry. Сервер под общей блокировкой сначала возвращает совпадающий same-key результат, включая терминальный, затем проверяет fence перед новым действием. Оба параметра имеют default 0; для следующего нового действия нужен актуальный счётчик. Подмена UUID со старого снимка завершается `goal_history_changed`, а не новым объектом.
+
+Intent хранится в sessionStorage отдельно для пользователя и scope, с memory fallback при запрете storage. После reload доступна отдельная кнопка «Проверить прежний запрос»: `inspect_goal_request` только читает собственный результат, никогда не создаёт предложение. Если результат не найден, пользователь отдельно выбирает повторную отправку исходного intent. Начать новое действие можно отдельной кнопкой после обновления истории; она только очищает intent, а не отправляет новое предложение. Известный дубликат цели или шага требует дополнительного подтверждения создания отдельного объекта. Offline-запрос отклоняется немедленно; мутации не ставятся в очередь и не отправляются автоматически при reconnect.
+
+Ограничения: после одновременной потери storage и памяти исходный UUID восстановить невозможно. Серверный fence защищает старый снимок, но не запрещает намеренно создать отдельную одинаковую цель с актуальными данными и явным подтверждением. Изоляция вкладок проверяется независимыми экземплярами модулей/storage и реальными конкурентными транзакциями; полноценный browser E2E двух окон не выполнялся.
+
+## Журнал и read-only сверка
+
+Клиентские INSERT/UPDATE/DELETE/TRUNCATE журнала уже запрещены grants/RLS; обход этих прав review не обнаружил. Дополнительный private trigger `protect_goal_reward` запрещает UPDATE и DELETE существующей награды даже обычным owner SQL. Исключение — каскадное удаление после удаления родительской цели для административной очистки disposable Auth fixtures. Это не защита от superuser, TRUNCATE владельцем или отключения trigger; пользовательского удаления аккаунта в MVP нет.
+
+`supabase/tests/together-xp-audit.sql` — только read-only owner diagnostic: сравнивает space_progress с суммой task Together XP и goal ledger. Не предоставляет клиентского RPC и не исправляет историю. Историческое расхождение, в том числе после административного удаления, требует отдельного расследования. Глобальный reconciliation-trigger намеренно не добавлен: он блокировал бы штатные начисления при старом расхождении. Тесты подтверждают +50 за цель вместе с +20 за совместное задание, сохранение старого расхождения без переписывания, запрет изменения журнала, гонку двух подтверждений/task/leave и полный rollback, включая COMMIT-time ошибку.
+
+В review: 85 UI/unit и 81 PostgreSQL-тест (75 security/RPC + 6 полных store migration), typecheck, lint и production build прошли. Локальный Supabase smoke прошёл на настоящих PostgreSQL/Auth/PostgREST с собственными временными аккаунтами. Сохраняется предупреждение Vite о большом JS chunk (~756 kB до gzip); разделение bundle — отдельная оптимизация.

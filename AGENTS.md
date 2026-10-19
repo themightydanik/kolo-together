@@ -24,3 +24,5 @@
 - Покупки: сохраняйте UUID и исходный p_expected_purchases одним intent; retry не должен брать свежий counter. Ошибка reward_purchase_changed требует нового явного подтверждения. Backfill проверять полным SQL-файлом на отдельной новой disposable БД, включая missing progress и откат DDL; старые удалённые данные не восстанавливать автоматически.
 
 - Цели: следуйте `docs/couple-goals.md`. Один pending consent на цель; нельзя менять assignment/title начатого шага или принимать за другого. Бонус только в goal_reward_ledger (+50 Together XP) и space_progress, никогда в coin/reward ledger задач. Проверяйте freeze/leave/rejoin, view RLS, конкурентное завершение и COMMIT rollback на PostgreSQL; после изменения членства инвалидируйте couple-goals cache.
+
+- Goal intents: храните UUID, исходный payload и expected counter вместе; retry никогда не перебазирует намерение. Проверка неизвестного результата — SELECT-only inspect_goal_request, а не повторная мутация. Новый UUID/повторная отправка требуют отдельного явного действия; не ставьте goal mutations в offline-очередь. Сверка Together XP read-only, исторические расхождения не исправлять автоматически.

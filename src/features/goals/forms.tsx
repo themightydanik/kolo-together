@@ -1,12 +1,13 @@
-import { useRef } from 'react'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/auth-context'
 import { Button } from '../../components/ui/button'
 import { errorMessage } from '../../lib/errors'
 import type { GoalStep } from '../../lib/database.types'
-import { useGoalAction } from './api'
+import { useGoalAction, useGoals } from './api'
+import { useGoalIntent } from './intents'
+import { GoalRecovery } from './recovery'
 import {
   goalSchema,
   stepSchema,
@@ -16,9 +17,12 @@ import {
   type StepInput,
 } from './model'
 export function GoalForm({ close }: { close: () => void }) {
-  const { client, online } = useAuth()
-  const cache = useQueryClient()
-  const request = useRef({ payload: '', id: '' })
+  const { session, online } = useAuth()
+  const workspace = useGoals()
+  const space = workspace.data?.couple?.space.id ?? ''
+  const create = useGoalAction(workspace.data)
+  const pending = useGoalIntent(session!.user.id, `create:${space}`)
+  const [duplicate, setDuplicate] = useState<GoalInput | null>(null)
   const {
     register,
     handleSubmit,
@@ -33,32 +37,38 @@ export function GoalForm({ close }: { close: () => void }) {
       target_date: '',
     },
   })
-  const create = useMutation({
-    mutationFn: async (values: GoalInput) => {
-      const payload = JSON.stringify(values)
-      if (request.current.payload !== payload || !request.current.id)
-        request.current = { payload, id: crypto.randomUUID() }
-      const result = await client!.rpc('create_couple_goal', {
-        p_request_id: request.current.id,
-        p_title: values.title,
-        p_description: values.description,
-        p_category: values.category,
-        p_emoji: values.emoji,
-        p_target_date: values.target_date || null,
-      })
-      if (result.error) throw result.error
-      return result.data
-    },
-    onSuccess: async () => {
-      await cache.invalidateQueries({ queryKey: ['couple-goals'] })
-      close()
-    },
-  })
+  function submit(values: GoalInput, confirmed = false) {
+    const matches = workspace.data?.goals.some(
+      (g) =>
+        g.creator_id === session!.user.id &&
+        g.title === values.title &&
+        g.description === values.description &&
+        g.category === values.category &&
+        g.emoji === values.emoji &&
+        (g.target_date ?? '') === values.target_date,
+    )
+    if (matches && !confirmed) {
+      setDuplicate(values)
+      return
+    }
+    void create
+      .mutateAsync({ kind: 'create', space, values })
+      .then(close)
+      .catch(() => {})
+  }
+  if (pending)
+    return (
+      <GoalRecovery
+        intent={pending}
+        close={close}
+        initialError={create.error}
+      />
+    )
   return (
     <form
       noValidate
       className="space-y-4"
-      onSubmit={handleSubmit((v) => create.mutate(v))}
+      onSubmit={handleSubmit((v) => submit(v))}
     >
       <h2 className="text-xl font-semibold">Новая цель</h2>
       <label className="block">
@@ -116,6 +126,21 @@ export function GoalForm({ close }: { close: () => void }) {
         партнёра. Сроки без штрафов и гонки; +50 Together XP — только после
         достижения и подтверждения обоими.
       </p>
+      {duplicate && (
+        <div className="space-y-2 rounded-xl bg-muted p-3">
+          <p>
+            Такая цель уже есть. Проверьте список: это может быть результатом
+            прежнего запроса.
+          </p>
+          <Button
+            type="button"
+            disabled={!online || create.isPending}
+            onClick={() => submit(duplicate, true)}
+          >
+            Создать отдельную цель с такими условиями
+          </Button>
+        </div>
+      )}
       {create.isError && <p role="alert">{errorMessage(create.error)}</p>}
       <div className="flex flex-wrap gap-2">
         <Button disabled={!online || create.isPending}>Предложить цель</Button>
@@ -142,8 +167,10 @@ export function StepForm({
   assignment?: StepInput['assignment']
   close: () => void
 }) {
-  const { online } = useAuth()
-  const action = useGoalAction()
+  const { online, session } = useAuth()
+  const workspace = useGoals()
+  const [duplicate, setDuplicate] = useState<StepInput | null>(null)
+  const action = useGoalAction(workspace.data)
   const {
     register,
     handleSubmit,
@@ -156,21 +183,45 @@ export function StepForm({
       assignment: assignment ?? 'both',
     },
   })
+  function submit(values: StepInput, confirmed = false) {
+    const me = session!.user.id,
+      data = workspace.data
+    const matches =
+      !step &&
+      data?.steps.some((s) => {
+        if (
+          s.goal_id !== goal ||
+          s.title !== values.title ||
+          s.description !== values.description
+        )
+          return false
+        const people = data.participants
+          .filter((p) => p.step_id === s.id)
+          .map((p) => p.user_id)
+        return values.assignment === 'both'
+          ? people.length === 2
+          : people.length === 1 &&
+              (values.assignment === 'me' ? people[0] === me : people[0] !== me)
+      })
+    if (matches && !confirmed) {
+      setDuplicate(values)
+      return
+    }
+    void action
+      .mutateAsync({
+        kind: 'propose',
+        goal,
+        change: step ? 'step_edit' : 'step_add',
+        payload: { ...values, ...(step ? { step_id: step.id } : {}) },
+      })
+      .then(close)
+      .catch(() => {})
+  }
   return (
     <form
       noValidate
       className="space-y-4"
-      onSubmit={handleSubmit((values) =>
-        action.mutate(
-          {
-            kind: 'propose',
-            goal,
-            change: step ? 'step_edit' : 'step_add',
-            payload: { ...values, ...(step ? { step_id: step.id } : {}) },
-          },
-          { onSuccess: close },
-        ),
-      )}
+      onSubmit={handleSubmit((v) => submit(v))}
     >
       <h2 className="text-lg font-semibold">
         {step ? 'Предложить изменение шага' : 'Новый шаг'}
@@ -206,6 +257,21 @@ export function StepForm({
         Условия и участники изменятся только после согласия второго партнёра.
         Каждый отмечает себя. За отдельные шаги XP и Coins не начисляются.
       </p>
+      {duplicate && (
+        <div className="space-y-2 rounded-xl bg-muted p-3">
+          <p>
+            Такой шаг уже согласован. Проверьте историю прежде, чем предлагать
+            ещё один.
+          </p>
+          <Button
+            type="button"
+            disabled={!online || action.isPending}
+            onClick={() => submit(duplicate, true)}
+          >
+            Предложить ещё один отдельный шаг
+          </Button>
+        </div>
+      )}
       {action.isError && <p role="alert">{errorMessage(action.error)}</p>}
       <div className="flex flex-wrap gap-2">
         <Button disabled={!online || action.isPending}>Предложить шаг</Button>

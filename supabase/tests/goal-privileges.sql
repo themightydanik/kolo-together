@@ -1,10 +1,10 @@
 do $$
 declare sig text; fn oid; internal boolean; tab text;
 begin
- foreach sig in array array['public.can_read_goal(uuid)','public.can_read_goal_step(uuid)','public.lock_couple_goal(uuid)',
- 'public.create_couple_goal(uuid,text,text,text,text,date)','public.propose_goal_change(uuid,uuid,text,jsonb)',
+ foreach sig in array array['public.inspect_goal_request(uuid,uuid)','public.can_read_goal(uuid)','public.can_read_goal_step(uuid)','public.lock_couple_goal(uuid)','public.protect_goal_reward()',
+ 'public.create_couple_goal(uuid,text,text,text,text,date,integer)','public.propose_goal_change(uuid,uuid,text,jsonb,integer)',
  'public.resolve_goal_consent(uuid,text)','public.complete_goal_step(uuid)','public.close_goals_on_departure()'] loop
-  fn:=sig::regprocedure; internal:=sig in ('public.lock_couple_goal(uuid)','public.close_goals_on_departure()');
+  fn:=sig::regprocedure; internal:=sig in ('public.protect_goal_reward()','public.lock_couple_goal(uuid)','public.close_goals_on_departure()');
   if has_function_privilege('anon',fn,'EXECUTE') or has_function_privilege('authenticated',fn,'EXECUTE')=internal then raise exception 'invalid goal grants: %',sig; end if;
   if exists(select 1 from pg_proc p,lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where p.oid=fn and a.grantee=0 and a.privilege_type='EXECUTE') then raise exception 'PUBLIC goal grant: %',sig; end if;
   if not exists(select 1 from pg_proc where oid=fn and proconfig @> array['search_path=""']) then raise exception 'unsafe goal path: %',sig; end if;

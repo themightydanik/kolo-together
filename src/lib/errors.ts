@@ -27,6 +27,8 @@ export function errorMessage(error: unknown): string {
   )
     return 'Нет связи с сервером. Проверьте сеть и повторите попытку.'
   const taskErrors: Record<string, string> = {
+    goal_intent_pending:'Сначала проверьте прежний запрос или явно начните новое действие после проверки истории.',
+    goal_history_changed:'История изменилась. Проверьте список целей и согласования перед новым действием.',
     invalid_goal: 'Проверьте название, описание и дату цели.',
     invalid_goal_change: 'Проверьте условия шага или порядок шагов.',
     goal_unavailable: 'Цель недоступна. Обновите список своих целей.',
