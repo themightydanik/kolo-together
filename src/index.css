@@ -20,3 +20,7 @@ button { cursor: pointer; }
 .hero { background: linear-gradient(120deg, #eee3f8 0%, #f4e6dd 100%); color: #463352; }
 .avatar { display: flex; align-items: center; justify-content: center; width: 3rem; height: 3rem; border-radius: 50%; background: var(--muted); color: var(--primary); font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+
+@layer components {
+ .field { @apply mt-2 block min-h-11 w-full rounded-xl border border-border bg-background px-3 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring; }
+}
