@@ -4,7 +4,7 @@ begin
   foreach sig in array array['public.get_coin_summary()','public.record_coin_earning()','public.check_coin_refund_capacity()',
     'public.can_read_reward_offer(uuid)','public.create_reward_offer(uuid,text,text,text,text,text,integer,boolean)',
     'public.respond_reward_offer(uuid,boolean)','public.set_reward_offer_published(uuid,boolean)',
-    'public.buy_reward_offer(uuid,uuid)','public.refund_reward_purchase(uuid)',
+    'public.buy_reward_offer(uuid,uuid,integer)','public.refund_reward_purchase(uuid)',
     'public.act_reward_purchase(uuid,text)','public.close_rewards_on_departure()'] loop
     fn:=sig::regprocedure;
     internal:=sig in ('public.record_coin_earning()','public.check_coin_refund_capacity()',

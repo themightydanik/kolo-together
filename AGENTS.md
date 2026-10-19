@@ -20,3 +20,5 @@
 - Деморежим не создаёт серверные начисления и сессии. Списания/возвраты игровых Coins этапа 4 — только по `docs/rewards-store.md`; денежные переводы/кошельки не входят в этап.
 
 - Магазин: сохраняйте reward_ledger положительным, coin_transactions — единственным зеркалом earn/spend/refund. Не удваивайте historical backfill. Порядок блокировок user → space → offer → purchase → progress; возврат не берёт чужой advisory lock. Проверяйте согласия, snapshots, request keys, single-use, rollback и leave refunds на PostgreSQL.
+
+- Покупки: сохраняйте UUID и исходный p_expected_purchases одним intent; retry не должен брать свежий counter. Ошибка reward_purchase_changed требует нового явного подтверждения. Backfill проверять полным SQL-файлом на отдельной новой disposable БД, включая missing progress и откат DDL; старые удалённые данные не восстанавливать автоматически.

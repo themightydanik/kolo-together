@@ -49,15 +49,19 @@ try {
     }
   }
   if (!ready) throw new Error('Test PostgreSQL did not start')
-  const result = spawnSync(
-    process.execPath,
-    ['--test', 'supabase/tests/security.mjs'],
-    {
+  for (const file of [
+    'supabase/tests/security.mjs',
+    'supabase/tests/store-migration.mjs',
+  ]) {
+    const result = spawnSync(process.execPath, ['--test', file], {
       stdio: 'inherit',
       env: { ...process.env, KOLO_LOCAL_TEST_DB: connectionString },
-    },
-  )
-  process.exitCode = result.status ?? 1
+    })
+    if (result.status !== 0) {
+      process.exitCode = result.status ?? 1
+      break
+    }
+  }
 } catch (error) {
   console.error(
     'Database security tests require a running Docker engine:',

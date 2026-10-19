@@ -28,6 +28,7 @@ export function errorMessage(error: unknown): string {
     return 'Нет связи с сервером. Проверьте сеть и повторите попытку.'
   const taskErrors: Record<string, string> = {
     invalid_reward_offer: 'Проверьте поля награды: стоимость от 1 до 100 000 Coins.',
+    reward_purchase_changed: 'История покупок изменилась. Обновите магазин и проверьте историю перед новой покупкой.',
     reward_unavailable: 'Награда недоступна. Обновите магазин.',
     reward_transition_denied: 'Это действие уже недоступно. Обновите историю.',
     reward_request_conflict: 'Запрос уже использован с другими данными. Обновите страницу.',

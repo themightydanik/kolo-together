@@ -1179,9 +1179,10 @@ const offer = async (n, options = {}) =>
       ],
     )
   )[0].id
-const buy = async (n, id, key = randomUUID()) =>
-  (await asUser(n, 'select public.buy_reward_offer($1,$2) as id', [id, key]))[0]
-    .id
+const buy = async (n,id,key=randomUUID()) => {
+  const count=(await asUser(n,'select count(*)::integer as n from public.reward_purchases where offer_id=$1 and buyer_id=$2',[id,uid(n)]))[0].n
+  return (await asUser(n,'select public.buy_reward_offer($1,$2,$3) as id',[id,key,count]))[0].id
+}
 const consent = (n, id, accept = true) =>
   asUser(n, 'select public.respond_reward_offer($1,$2)', [id, accept])
 const purchaseAction = (n, id, action) =>
@@ -1318,10 +1319,11 @@ test('purchase enforces own balance, insufficient funds and exact request idempo
   const other = await offer(1)
   await assert.rejects(buy(2, other, key), /reward_request_conflict/)
   await assert.rejects(
-    asUser(2, 'select public.buy_reward_offer($1,$2,$3)', [
+    asUser(2, 'select public.buy_reward_offer($1,$2,$3,$4)', [
       id,
       randomUUID(),
       uid(1),
+      0,
     ]),
     /does not exist/,
   )
@@ -1331,7 +1333,8 @@ test('two different simultaneous purchases cannot overspend; earning and spendin
   await pair()
   await earn(2)
   const id = await offer(1, { price: 7 })
-  const results = await Promise.allSettled([buy(2, id), buy(2, id)])
+  const other = await offer(1,{price:7})
+  const results = await Promise.allSettled([buy(2, id), buy(2, other)])
   assert.equal(results.filter((x) => x.status === 'fulfilled').length, 1)
   assert.equal((await progress(2)).coins, 3)
   const ti = await instance(await task(2))
@@ -1658,4 +1661,109 @@ test('historical backfill refuses inconsistent balances without repairing or del
     (await pool.query('select * from public.coin_transactions')).rowCount,
     1,
   )
+})
+
+test('lost storage and two stale tabs with different UUIDs cannot silently charge twice, even after settlement', async () => {
+  await pair()
+  await earn(2, 3)
+  const id = await offer(1)
+  const raw = (key, count) =>
+    asUser(2, 'select public.buy_reward_offer($1,$2,$3) as id', [
+      id,
+      key,
+      count,
+    ])
+  const keys = [randomUUID(), randomUUID()]
+  const race = await Promise.allSettled(keys.map((k) => raw(k, 0)))
+  assert.equal(race.filter((x) => x.status === 'fulfilled').length, 1)
+  const win = race.findIndex((x) => x.status === 'fulfilled')
+  const p = race[win].value[0].id
+  assert.equal((await progress(2)).coins, 25)
+  assert.match(race[1 - win].reason.message, /reward_purchase_changed/)
+  assert.equal((await raw(keys[win], 0))[0].id, p)
+  await purchaseAction(2, p, 'cancel')
+  await assert.rejects(raw(randomUUID(), 0), /reward_purchase_changed/)
+  assert.equal((await raw(keys[win], 0))[0].id, p)
+  const next = (await raw(randomUUID(), 1))[0].id
+  assert.notEqual(next, p)
+  await assertCoinAccounting(2)
+})
+test('returning partner sees only their history; new partner cannot revive closed offers or cancelled purchases', async () => {
+  await pair()
+  await earn(2)
+  const id = await offer(1, { kind: 'joint' })
+  await consent(2, id)
+  const p = await buy(2, id)
+  await asUser(2, 'select public.leave_couple_space()')
+  await resolve(2, await invite(1, 2))
+  await assert.rejects(publish(1, id, true), /reward_transition_denied/)
+  await assert.rejects(
+    purchaseAction(1, p, 'ready'),
+    /reward_transition_denied/,
+  )
+  await assert.rejects(
+    purchaseAction(2, p, 'confirm'),
+    /reward_transition_denied/,
+  )
+  assert.equal(
+    (
+      await asUser(
+        2,
+        'select status from public.reward_purchases where id=$1',
+        [p],
+      )
+    )[0].status,
+    'cancelled',
+  )
+  await asUser(2, 'select public.leave_couple_space()')
+  await resolve(3, await invite(1, 3))
+  for (const table of [
+    'reward_offers',
+    'reward_offer_consents',
+    'reward_purchases',
+  ])
+    assert.equal((await asUser(3, `select * from public.${table}`)).length, 0)
+  await assert.rejects(purchaseAction(3, p, 'ready'), /reward_unavailable/)
+  await assert.rejects(consent(3, id), /reward_unavailable/)
+  assert.equal((await progress(2)).coins, 10)
+})
+test('joint buyer/provider roles are symmetric for either purchaser and readiness never confirms receipt', async () => {
+  await pair()
+  await earn(1, 2)
+  await earn(2, 2)
+  for (const buyer of [1, 2]) {
+    const provider = 3 - buyer
+    const id = await offer(1, { kind: 'joint' })
+    await consent(2, id)
+    const p = await buy(buyer, id)
+    await assert.rejects(
+      purchaseAction(buyer, p, 'ready'),
+      /reward_transition_denied/,
+    )
+    await purchaseAction(provider, p, 'ready')
+    await assert.rejects(
+      purchaseAction(provider, p, 'confirm'),
+      /reward_transition_denied/,
+    )
+    assert.equal(
+      (
+        await pool.query(
+          'select status from public.reward_purchases where id=$1',
+          [p],
+        )
+      ).rows[0].status,
+      'ready',
+    )
+    await purchaseAction(buyer, p, 'confirm')
+    await assert.rejects(
+      purchaseAction(provider, p, 'refuse'),
+      /reward_transition_denied/,
+    )
+    const cancelled = await buy(buyer, id)
+    await purchaseAction(provider, cancelled, 'refuse')
+    await purchaseAction(buyer, cancelled, 'cancel')
+    await assertCoinAccounting(buyer)
+  }
+  assert.deepEqual(await progress(1), { xp: 40, coins: 15 })
+  assert.deepEqual(await progress(2), { xp: 40, coins: 15 })
 })

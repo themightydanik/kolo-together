@@ -67,7 +67,7 @@ export function useRewardAction() {
   return useMutation({
     mutationFn: async (
       action:
-        | { kind: 'buy'; id: string; request: string }
+        | { kind: 'buy'; id: string; request: string; expected: number }
         | { kind: 'accept' | 'decline' | 'publish' | 'pause'; id: string }
         | { kind: 'purchase'; id: string; action: PurchaseAction },
     ) => {
@@ -76,6 +76,7 @@ export function useRewardAction() {
           ? await client!.rpc('buy_reward_offer', {
               p_offer_id: action.id,
               p_request_id: action.request,
+              p_expected_purchases: action.expected,
             })
           : action.kind === 'purchase'
             ? await client!.rpc('act_reward_purchase', {
@@ -94,6 +95,7 @@ export function useRewardAction() {
       if (result.error) throw result.error
       return result.data
     },
+    onError: () => cache.invalidateQueries({ queryKey: ['reward-store'] }),
     onSuccess: async () => {
       await Promise.all([
         cache.invalidateQueries({ queryKey: ['reward-store'] }),

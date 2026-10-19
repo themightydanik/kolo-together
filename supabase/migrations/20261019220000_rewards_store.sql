@@ -1,7 +1,7 @@
 -- Local file only: never applied to a remote project by application/setup code.
 begin;
 -- Serialize the historical backfill with task earning transactions.
-lock table public.reward_ledger in share row exclusive mode;
+lock table public.reward_ledger, public.user_progress in share row exclusive mode;
 create table public.reward_offers (
   id uuid primary key default gen_random_uuid(),
   request_id uuid not null,
@@ -64,17 +64,24 @@ create table public.coin_transactions (
 create index coin_transactions_owner on public.coin_transactions(user_id,created_at desc,id);
 -- No second credit: mirror historical earnings without modifying user_progress.
 do $$ begin
-  if exists(select 1 from public.user_progress p where p.coins <> coalesce(
-    (select sum(l.coins) from public.reward_ledger l where l.user_id=p.user_id and l.kind='personal'),0)) then
+  if exists(select 1 from public.reward_ledger where kind='personal' and (coins<0 or user_id is null)) then
     raise exception 'coin_history_mismatch';
   end if;
+  if exists(
+    select 1 from public.user_progress p full join
+      (select user_id,sum(coins) as earned from public.reward_ledger where kind='personal' group by user_id) l
+      on l.user_id=p.user_id
+    where (p.user_id is null and l.earned<>0) or (p.user_id is not null and p.coins<>coalesce(l.earned,0))
+  ) then raise exception 'coin_history_mismatch'; end if;
 end $$;
+-- Zero-value legacy facts carry no Coins; preserve them in reward_ledger, not
+-- as invalid positive-only coin transactions. Together XP never mirrors earn.
 insert into public.coin_transactions(user_id,kind,amount,reward_ledger_id,created_at)
-  select user_id,'earn',coins,id,created_at from public.reward_ledger where kind='personal';
+  select user_id,'earn',coins,id,created_at from public.reward_ledger where kind='personal' and coins>0;
 create function public.record_coin_earning() returns trigger
 language plpgsql security definer set search_path='' as $$
 begin
-  if new.kind='personal' then
+  if new.kind='personal' and new.coins>0 then
     insert into public.coin_transactions(user_id,kind,amount,reward_ledger_id)
       values(new.user_id,'earn',new.coins,new.id);
   end if;
@@ -158,7 +165,7 @@ begin
   if not public.can_read_reward_offer(o.id) or o.creator_id<>v_uid or p_published is null or o.status not in ('active','paused') then raise exception 'reward_transition_denied'; end if;
   update public.reward_offers set status=case when p_published then 'active' else 'paused' end where id=o.id;
 end $$;
-create function public.buy_reward_offer(p_offer_id uuid,p_request_id uuid) returns uuid
+create function public.buy_reward_offer(p_offer_id uuid,p_request_id uuid,p_expected_purchases integer default 0) returns uuid
 language plpgsql security definer set search_path='' as $$
 declare v_uid uuid:=public.require_verified_user(); o public.reward_offers; old public.reward_purchases; v_id uuid; v_balance bigint;
 begin
@@ -174,6 +181,13 @@ begin
     if old.offer_id<>o.id then raise exception 'reward_request_conflict'; end if;
     return old.id;
   end if;
+  -- A fresh key must acknowledge the current purchase history. This catches
+  -- stale tabs, lost storage and retries with a replacement UUID, even if an
+  -- earlier purchase has already completed/cancelled. Same-key replay above
+  -- remains valid regardless of this optimistic concurrency fence.
+  if p_expected_purchases is null or p_expected_purchases<0 or p_expected_purchases<>(
+    select count(*) from public.reward_purchases where offer_id=o.id and buyer_id=v_uid
+  ) then raise exception 'reward_purchase_changed'; end if;
   if o.status<>'active' or (o.kind='partner' and v_uid=o.creator_id)
     or (select count(*) from public.couple_members where space_id=o.space_id and left_at is null and user_id in (o.creator_id,o.partner_id))<>2
     or (o.kind='joint' and (select count(*) from public.reward_offer_consents where offer_id=o.id and consent='accepted')<>2)
@@ -274,9 +288,9 @@ revoke all on public.reward_offers,public.reward_offer_consents,public.reward_pu
 grant select on public.reward_offers,public.reward_offer_consents,public.reward_purchases,public.coin_transactions to authenticated;
 revoke all on function public.get_coin_summary(),public.record_coin_earning(),public.check_coin_refund_capacity(),public.can_read_reward_offer(uuid),
  public.create_reward_offer(uuid,text,text,text,text,text,integer,boolean),public.respond_reward_offer(uuid,boolean),
- public.set_reward_offer_published(uuid,boolean),public.buy_reward_offer(uuid,uuid),public.refund_reward_purchase(uuid),
+ public.set_reward_offer_published(uuid,boolean),public.buy_reward_offer(uuid,uuid,integer),public.refund_reward_purchase(uuid),
  public.act_reward_purchase(uuid,text),public.close_rewards_on_departure() from public,anon,authenticated;
 grant execute on function public.get_coin_summary(),public.can_read_reward_offer(uuid),public.create_reward_offer(uuid,text,text,text,text,text,integer,boolean),
- public.respond_reward_offer(uuid,boolean),public.set_reward_offer_published(uuid,boolean),public.buy_reward_offer(uuid,uuid),
+ public.respond_reward_offer(uuid,boolean),public.set_reward_offer_published(uuid,boolean),public.buy_reward_offer(uuid,uuid,integer),
  public.act_reward_purchase(uuid,text) to authenticated;
 commit;

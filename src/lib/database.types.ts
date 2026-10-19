@@ -225,7 +225,7 @@ export type Database = {
         Returns: undefined
       }
       buy_reward_offer: {
-        Args: { p_offer_id: string; p_request_id: string }
+        Args: { p_offer_id: string; p_request_id: string; p_expected_purchases: number }
         Returns: string
       }
       act_reward_purchase: {

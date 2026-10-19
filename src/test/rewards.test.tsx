@@ -208,9 +208,7 @@ test('purchase requires confirmation, uses server price and retries same key aft
   expect(
     screen.queryByText(/Покупка подтверждена сервером/),
   ).not.toBeInTheDocument()
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Подтвердить за 30 Coins' }),
-  )
+  fireEvent.click(screen.getByRole('button', { name: 'Повторить безопасно' }))
   expect(await screen.findByRole('status')).toHaveTextContent(
     'Покупка подтверждена сервером',
   )
@@ -219,6 +217,7 @@ test('purchase requires confirmation, uses server price and retries same key aft
   expect(w.rpc.mock.calls[0][0]).toBe('buy_reward_offer')
   expect(w.rpc.mock.calls[0][1]).toEqual(w.rpc.mock.calls[1][1])
   expect(Object.keys(w.rpc.mock.calls[0][1]).sort()).toEqual([
+    'p_expected_purchases',
     'p_offer_id',
     'p_request_id',
   ])
@@ -337,4 +336,140 @@ test('loading, empty and safe error states are present', async () => {
   expect(
     await screen.findByText('Здесь появятся ваши награды'),
   ).toBeInTheDocument()
+})
+
+test('reload restores unresolved UUID; storage loss in a new runtime creates a new UUID requiring server fencing', async () => {
+  const original = purchaseRequest('reload-user', 'reload-offer')
+  vi.resetModules()
+  const reloaded = await import('../features/rewards/purchase-request')
+  expect(reloaded.purchaseRequest('reload-user', 'reload-offer')).toBe(original)
+  sessionStorage.clear()
+  vi.resetModules()
+  const lost = await import('../features/rewards/purchase-request')
+  expect(lost.purchaseRequest('reload-user', 'reload-offer')).not.toBe(original)
+})
+test('isolated tabs can have different UUIDs, while disabled storage retains an in-memory retry UUID', async () => {
+  let tab = new Map<string, string>()
+  vi.spyOn(Storage.prototype, 'getItem').mockImplementation(
+    (key) => tab.get(key) ?? null,
+  )
+  vi.spyOn(Storage.prototype, 'setItem').mockImplementation((key, value) => {
+    tab.set(key, value)
+  })
+  vi.resetModules()
+  const first = await import('../features/rewards/purchase-request')
+  const a = first.purchaseRequest('tabs', 'offer')
+  tab = new Map()
+  vi.resetModules()
+  const second = await import('../features/rewards/purchase-request')
+  expect(second.purchaseRequest('tabs', 'offer')).not.toBe(a)
+  vi.mocked(Storage.prototype.getItem).mockImplementation(() => {
+    throw Error('storage disabled')
+  })
+  vi.mocked(Storage.prototype.setItem).mockImplementation(() => {
+    throw Error('storage disabled')
+  })
+  expect(first.purchaseRequest('tabs', 'offer')).toBe(a)
+})
+test('recovery stays enabled after debit consumes balance or a single-use offer is sold', async () => {
+  purchaseRequest('b', 'offer')
+  const d = data()
+  d.summary.balance = 0
+  d.purchases = [purchase]
+  const w = wrapper(
+    <RewardOfferCard offer={{ ...offer, single_use: true }} data={d} />,
+  )
+  const check = await screen.findByRole('button', {
+    name: 'Проверить предыдущую покупку',
+  })
+  expect(check).toBeEnabled()
+  fireEvent.click(check)
+  fireEvent.click(screen.getByRole('button', { name: 'Повторить безопасно' }))
+  await waitFor(() => expect(w.rpc).toHaveBeenCalled())
+  expect(w.rpc.mock.calls[0][1].p_request_id).toBeTruthy()
+})
+test('fresh purchase after reload with existing history explicitly warns of a separate debit', async () => {
+  const d = data()
+  d.purchases = [purchase]
+  const w = wrapper(<RewardOfferCard offer={offer} data={d} />)
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Купить ещё за 30 Coins' }),
+  )
+  expect(screen.getByText(/Это отдельная новая покупка/)).toBeInTheDocument()
+  expect(w.rpc).not.toHaveBeenCalled()
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Подтвердить за 30 Coins' }),
+  )
+  await waitFor(() =>
+    expect(w.rpc).toHaveBeenCalledWith(
+      'buy_reward_offer',
+      expect.objectContaining({ p_expected_purchases: 1 }),
+    ),
+  )
+})
+test('stale tab failure never shows success and asks to inspect refreshed history', async () => {
+  const w = wrapper(<RewardOfferCard offer={offer} data={data()} />)
+  w.rpc.mockResolvedValue({
+    data: null,
+    error: { message: 'reward_purchase_changed' },
+  })
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Получить за 30 Coins' }),
+  )
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Подтвердить за 30 Coins' }),
+  )
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'История покупок изменилась',
+  )
+  expect(
+    screen.queryByText(/Покупка подтверждена сервером/),
+  ).not.toBeInTheDocument()
+})
+test('joint purchase labels the other participant clearly and never lets them confirm receipt', async () => {
+  const w = wrapper(
+    <PurchaseCard
+      purchase={{
+        ...purchase,
+        kind: 'joint',
+        buyer_id: 'a',
+        provider_id: 'b',
+        status: 'pending',
+      }}
+      data={data()}
+    />,
+  )
+  expect(await screen.findByText(/Второй участник: Вы/)).toBeInTheDocument()
+  expect(
+    screen.getByText(/Это совместное событие: оба участвуют добровольно/),
+  ).toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Я получил(а) награду' }),
+  ).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Готов(а) исполнить' }))
+  await waitFor(() =>
+    expect(w.rpc).toHaveBeenCalledWith('act_reward_purchase', {
+      p_purchase_id: 'purchase',
+      p_action: 'ready',
+    }),
+  )
+})
+test('retry never adopts a newer purchase counter, including after a full module reload', async () => {
+  vi.resetModules()
+  const first = await import('../features/rewards/purchase-request')
+  const intent = first.purchaseIntent('fenced', 'offer', 0)
+  expect(first.purchaseIntent('fenced', 'offer', 1)).toEqual(intent)
+  vi.resetModules()
+  const reload = await import('../features/rewards/purchase-request')
+  expect(reload.purchaseIntent('fenced', 'offer', 2)).toEqual(intent)
+})
+test('legacy unresolved UUID never adopts the latest history counter', async () => {
+  const id = crypto.randomUUID()
+  sessionStorage.setItem('kolo-purchase:legacy:offer', id)
+  vi.resetModules()
+  const legacy = await import('../features/rewards/purchase-request')
+  expect(legacy.purchaseIntent('legacy', 'offer', 3)).toEqual({
+    request: id,
+    expected: 0,
+  })
 })

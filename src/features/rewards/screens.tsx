@@ -10,7 +10,11 @@ import type { RewardOffer, RewardPurchase } from '../../lib/database.types'
 import { useRewardStore, useRewardAction, type RewardStore } from './api'
 import { RewardForm } from './form'
 import { rewardCategories } from './model'
-import { purchaseRequest, clearPurchaseRequest } from './purchase-request'
+import {
+  purchaseIntent,
+  clearPurchaseRequest,
+  pendingPurchaseRequest,
+} from './purchase-request'
 const statuses = {
   pending: 'Ожидает исполнения',
   ready: 'Готовность подтверждена · ждёт подтверждения покупателем',
@@ -43,16 +47,36 @@ export function RewardOfferCard({
   const [receipt, setReceipt] = useState(false)
   const sold =
     offer.single_use && data.purchases.some((p) => p.offer_id === offer.id)
+  const recovering = !!pendingPurchaseRequest(me, offer.id)
   const canBuy =
-    offer.status === 'active' &&
-    !sold &&
-    (offer.kind === 'joint' || offer.creator_id !== me)
+    recovering ||
+    (offer.status === 'active' &&
+      !sold &&
+      (offer.kind === 'joint' || offer.creator_id !== me))
   const enough = data.summary.balance >= offer.price
   const pending = offer.status === 'pending' && offer.partner_id === me
+  const ownPurchases = data.purchases.filter(
+    (p) => p.offer_id === offer.id && p.buyer_id === me,
+  )
   function buy() {
     action.mutate(
-      { kind: 'buy', id: offer.id, request: purchaseRequest(me, offer.id) },
       {
+        kind: 'buy',
+        id: offer.id,
+        ...purchaseIntent(me, offer.id, ownPurchases.length),
+      },
+      {
+        onError: (error) => {
+          if (
+            error &&
+            typeof error === 'object' &&
+            'message' in error &&
+            error.message === 'reward_purchase_changed'
+          ) {
+            clearPurchaseRequest(me, offer.id)
+            setConfirm(false)
+          }
+        },
         onSuccess: () => {
           clearPurchaseRequest(me, offer.id)
           setConfirm(false)
@@ -79,6 +103,13 @@ export function RewardOfferCard({
       {offer.description && (
         <p className="whitespace-pre-wrap break-words text-sm">
           {offer.description}
+        </p>
+      )}
+      {offer.kind === 'joint' && (
+        <p className="text-sm text-muted-foreground">
+          Участвуют оба. Покупатель платит только свои Coins и подтверждает
+          получение; второй участник подтверждает готовность или отказывается с
+          возвратом.
         </p>
       )}
       <p className="text-sm">
@@ -114,16 +145,18 @@ export function RewardOfferCard({
       )}
       {canBuy && !confirm && (
         <Button
-          disabled={!online || action.isPending || !enough}
+          disabled={!online || action.isPending || (!enough && !recovering)}
           onClick={() => {
             setConfirm(true)
             setReceipt(false)
           }}
         >
-          Получить за {offer.price} Coins
+          {recovering
+            ? 'Проверить предыдущую покупку'
+            : `${ownPurchases.length ? 'Купить ещё за' : 'Получить за'} ${offer.price} Coins`}
         </Button>
       )}
-      {canBuy && !enough && (
+      {canBuy && !enough && !recovering && (
         <p className="text-sm text-muted-foreground">
           Недостаточно Coins. Заработайте ещё{' '}
           {offer.price - data.summary.balance} за дела.
@@ -136,17 +169,24 @@ export function RewardOfferCard({
           aria-label="Подтверждение покупки"
         >
           <p className="text-sm">
+            {recovering &&
+              'Повторим прежний запрос, чтобы проверить его результат. Это не новая покупка. '}
+            {!recovering &&
+              ownPurchases.length > 0 &&
+              'У вас уже есть покупка этой награды. Проверьте «Историю», если ответ потерялся. Это отдельная новая покупка с новым списанием. '}
             Спишется {offer.price} ваших Coins. Договоритесь об исполнении:
             можно отказаться или отменить покупку с полным возвратом.
           </p>
           <div className="flex flex-wrap gap-2">
             <Button
-              disabled={!online || action.isPending || !enough}
+              disabled={!online || action.isPending || (!enough && !recovering)}
               onClick={buy}
             >
               {action.isPending
                 ? 'Проверяем…'
-                : `Подтвердить за ${offer.price} Coins`}
+                : recovering
+                  ? 'Повторить безопасно'
+                  : `Подтвердить за ${offer.price} Coins`}
             </Button>
             <Button
               variant="ghost"
@@ -208,12 +248,21 @@ export function PurchaseCard({
         {p.price} Coins · {statuses[p.status]}
       </p>
       <p className="text-xs text-muted-foreground">
-        Покупатель: {person(data, p.buyer_id, me)} · Исполнитель:{' '}
+        Покупатель: {person(data, p.buyer_id, me)} ·{' '}
+        {p.kind === 'joint' ? 'Второй участник' : 'Исполнитель'}:{' '}
         {person(data, p.provider_id, me)}
       </p>
       <p className="text-xs text-muted-foreground">
         {new Date(p.created_at).toLocaleString('ru-RU')}
       </p>
+      {p.kind === 'joint' && (
+        <p className="text-sm">
+          Это совместное событие: оба участвуют добровольно. Платит покупатель,
+          готовность подтверждает второй участник, а состоявшееся событие —
+          покупатель. Любая сторона может отменить до получения с полным
+          возвратом.
+        </p>
+      )}
       {p.description && (
         <p className="whitespace-pre-wrap break-words text-sm">
           {p.description}

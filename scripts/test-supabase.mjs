@@ -541,6 +541,7 @@ try {
     await b.rpc('buy_reward_offer', {
       p_offer_id: storeOffer,
       p_request_id: request,
+      p_expected_purchases: 0,
     }),
     'Buy with own Coins',
   )
@@ -549,6 +550,7 @@ try {
       await b.rpc('buy_reward_offer', {
         p_offer_id: storeOffer,
         p_request_id: request,
+        p_expected_purchases: 0,
       }),
       'Retry real purchase',
     ),
@@ -585,10 +587,25 @@ try {
     check(await b.rpc('get_coin_summary'), 'Refunded balance').balance,
     10,
   )
+  const stale = await b.rpc('buy_reward_offer', {
+    p_offer_id: storeOffer,
+    p_request_id: randomUUID(),
+    p_expected_purchases: 0,
+  })
+  assert.equal(
+    stale.error?.message,
+    'reward_purchase_changed',
+    'Lost UUID/stale tab must fail even after cancellation',
+  )
+  assert.equal(
+    check(await b.rpc('get_coin_summary'), 'No unnoticed second spend').balance,
+    10,
+  )
   const finished = check(
     await b.rpc('buy_reward_offer', {
       p_offer_id: storeOffer,
       p_request_id: randomUUID(),
+      p_expected_purchases: 1,
     }),
     'Buy second reward',
   )
@@ -611,6 +628,7 @@ try {
     (
       await a.rpc('buy_reward_offer', {
         p_offer_id: jointOffer,
+        p_expected_purchases: 0,
         p_request_id: randomUUID(),
       })
     ).error,
@@ -626,6 +644,7 @@ try {
   const departurePurchase = check(
     await a.rpc('buy_reward_offer', {
       p_offer_id: jointOffer,
+      p_expected_purchases: 0,
       p_request_id: randomUUID(),
     }),
     'Pending purchase before exit',
