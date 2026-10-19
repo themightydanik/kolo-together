@@ -247,34 +247,29 @@ export function AuthScreen({ mode }: { mode: 'login' | 'register' | 'reset' }) {
   )
 }
 export function CallbackScreen() {
-  const { loading, session, error, retry } = useAuth()
-  const params = new URLSearchParams(window.location.search)
-  const hash = new URLSearchParams(window.location.hash.slice(1))
+  const { loading, session, callback } = useAuth()
   if (loading) return <LoadingState />
-  if (error || params.has('error') || hash.has('error'))
+  if (callback.status === 'success' && session?.user.id === callback.userId) {
     return (
-      <Card>
-        <p role="alert">
-          Ссылка недействительна или истекла. Запросите новое письмо или
-          попробуйте войти.
-        </p>
-        <Button onClick={retry}>Повторить</Button>
-        <Link to="/auth/reset" className="block text-primary">
-          Восстановить пароль
-        </Link>
-        <Link to="/auth/login" className="block text-primary">
-          Войти
-        </Link>
-      </Card>
+      <Navigate
+        to={callback.recovery ? '/auth/update-password' : authDestination()}
+        replace
+      />
     )
-  if (session) return <Navigate to={authDestination()} replace />
+  }
   return (
     <Card>
-      <p>
-        Подтверждение завершено. Войдите в аккаунт. Если ссылка открыта в другом
-        браузере, вернитесь в браузер, в котором запросили письмо.
+      <p role="alert">
+        Ссылка не подтверждена, недействительна или истекла. Запросите новое
+        письмо в том же браузере. Обычный вход не подтверждает эту ссылку.
       </p>
-      <Link to="/auth/login" className="text-primary">
+      <Link to="/auth/reset" className="block text-primary">
+        Восстановить пароль
+      </Link>
+      <Link to="/auth/register" className="block text-primary">
+        Подтверждение email
+      </Link>
+      <Link to="/auth/login" className="block text-primary">
         Войти
       </Link>
     </Card>
@@ -290,7 +285,15 @@ const passwordSchema = z
     message: 'Пароли не совпадают',
   })
 export function UpdatePasswordScreen() {
-  const { client, session, loading, online } = useAuth()
+  const {
+    client,
+    session,
+    loading,
+    online,
+    recoveryAllowed,
+    finishRecovery,
+    callback,
+  } = useAuth()
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const {
@@ -301,10 +304,17 @@ export function UpdatePasswordScreen() {
     resolver: zodResolver(passwordSchema),
   })
   if (loading) return <LoadingState />
-  if (!session)
+  if (
+    !session ||
+    (!done && (!recoveryAllowed() || callback.status === 'error'))
+  )
     return (
       <Card>
-        <p>Откройте действующую ссылку из письма в том же браузере.</p>
+        <p>
+          Форма доступна только по действующей ссылке восстановления, открытой в
+          том же браузере. Запросите новое письмо, если ссылка истекла или
+          страница была перезагружена.
+        </p>
         <Link to="/auth/reset" className="text-primary">
           Запросить новую ссылку
         </Link>
@@ -327,9 +337,11 @@ export function UpdatePasswordScreen() {
             setError(null)
             try {
               if (!online) throw new Error('offline')
+              if (!recoveryAllowed()) throw new Error('recovery_required')
               const result = await client!.auth.updateUser({ password })
               if (result.error) throw result.error
               setDone(true)
+              finishRecovery()
             } catch (e) {
               setError(errorMessage(e))
             }

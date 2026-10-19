@@ -51,7 +51,9 @@ supabase db push
 3. Настроить SMTP, отправителя, шаблоны Confirm signup / Reset password, rate limits и при необходимости CAPTCHA. Шаблоны должны использовать штатную ссылку подтверждения `ConfirmationURL`, чтобы сохранялся redirect flow.
 4. Проверить RLS и grants после миграции на тестовом проекте. Не отключать RLS для отладки.
 
-Используется PKCE с `persistSession`, автообновлением и обработкой callback Supabase JS. Ссылку подтверждения/восстановления нужно открывать в том же браузере, где запросили письмо (там хранится PKCE verifier). Письмо с истёкшей ссылкой запрашивается заново. Email-приглашение в пару автоматически **не отправляется**: участник копирует созданную ссылку и отправляет её партнёру лично.
+Используется PKCE с `persistSession` и автообновлением Supabase JS. Автоматический `detectSessionInUrl` отключён: provider подписывается на Auth, затем явно обменивает callback `code` через `exchangeCodeForSession`, сохраняя `sb_flow_id` для выбора правильного verifier. URL немедленно очищается; запрос выполняется один раз, в том числе при React Strict Mode. Ошибка URL/обмена обрабатывается до проверки существующей сессии; обычный вход не означает успешное подтверждение ссылки. Форма смены пароля требует `PASSWORD_RECOVERY` от SDK после успешного PKCE-обмена либо такого же проверенного Auth-события в текущем provider. Разрешение связано с user id, живёт только в памяти до 10 минут, проверяется повторно при отправке формы и снимается при успехе, обычном входе, выходе или смене пользователя. Успешный proof одноразовый даже при remount provider. После перезагрузки страницы нужна новая recovery-ссылка; наличие сессии, URL `type=recovery` или посещение `/auth/update-password` не дают доступа к форме. Это защита recovery-интерфейса, а не изменение штатной политики Supabase для самостоятельной смены пароля авторизованным пользователем через API.
+
+Ссылку подтверждения/восстановления нужно открывать в том же браузере, где запросили письмо (там хранится PKCE verifier). Письмо с истёкшей ссылкой запрашивается заново. Email-приглашение в пару автоматически **не отправляется**: участник копирует созданную ссылку и отправляет её партнёру лично.
 
 ## Модель безопасности
 
@@ -60,6 +62,7 @@ supabase db push
 - Клиент не может напрямую вставлять/удалять memberships, spaces или invitations либо менять user_id/seat/чужие строки.
 - Историю приглашений читает только отправитель, пока остаётся в пространстве; получатель получает минимальные сведения по токену через RPC. Новый партнёр не видит email предыдущих приглашённых.
 - Профиль читает владелец и текущий партнёр; изменяет только владелец и только `display_name`/`avatar_url`. Внешние аватары автоматически не загружаются.
+- `initialize_profile`, `touch_profile`, `require_verified_user` не имеют EXECUTE для PUBLIC, anon и authenticated. Только семь явно разрешённых функций доступны authenticated: пять business RPC и два RLS-предиката `is_space_member`/`is_partner`. Предикатам нужен EXECUTE при вычислении RLS; они возвращают только boolean относительно текущего `auth.uid()`. Anon не может вызывать ни одну функцию этого этапа. `supabase/tests/privileges.sql` проверяет эффективные привилегии (включая наследование/PUBLIC), security definer и фиксированный search_path.
 - SECURITY DEFINER RPC проверяют `auth.uid()` и `email_confirmed_at`, используют фиксированный пустой `search_path` и минимальные EXECUTE grants. Auth email проверяется в `auth.users`, не берётся из параметров клиента.
 - Мутации берут advisory lock пользователя, затем row lock пространства. Принятие дополнительно блокирует строку приглашения и проверяет её состояние/срок после блокировки. Уникальные ограничения — дополнительная защита от гонок.
 - Ссылка: 244 случайных бита, 24 часа, строго один подтверждённый email. В БД только SHA-256, `token_hash` не доступен клиентским ролям. Новый invite отменяет предыдущие; принятие и отклонение одноразовые.
@@ -77,7 +80,7 @@ npm test          # оба набора; отсутствие Docker счита�
 
 DB runner сам поднимает `postgres:17-alpine` на случайном loopback-порту с отдельной пустой БД `kolo_test` и удаляет контейнер в finally. Remote URL/credentials не читает, к production подключиться не может. Trust auth включён **только для disposable локального контейнера**. Нужен доступ Docker к Docker Hub при первом pull.
 
-`supabase/tests/bootstrap.sql` предоставляет минимальный контракт Supabase Auth для vanilla PostgreSQL: роли `anon`/`authenticated`, таблицу `auth.users` и `auth.uid()` через claim текущей транзакции. Это **реальная PostgreSQL с RLS и RPC**, а не мок базы; роли тестов без BYPASSRLS. Bootstrap не заменяет GoTrue и никогда не применяется к проекту Supabase. Тестируется сама production-миграция, а не её копия. Параллельные запросы используют разные DB connections. Auth UI тесты используют моки SDK и не доказывают доставку email или настройки Dashboard.
+`supabase/tests/bootstrap.sql` предоставляет минимальный контракт Supabase Auth для vanilla PostgreSQL: роли `anon`/`authenticated`, таблицу `auth.users` и `auth.uid()` через claim текущей транзакции. Это **реальная PostgreSQL с RLS и RPC**, а не мок базы; роли тестов без BYPASSRLS. Bootstrap не заменяет GoTrue и никогда не применяется к проекту Supabase. Тестируется сама production-миграция, а не её копия. Параллельные запросы используют разные DB connections. Auth UI тесты используют моки SDK. Дополнительный локальный integration runner проверяет реальные GoTrue, Mailpit, PostgREST и production PKCE handler (см. ниже). Ни один локальный тест не доказывает доставку писем внешним SMTP-провайдером или настройки hosted Dashboard.
 
 Проверки покрывают профиль, изоляцию пар, запрет прямых мутаций и третьего участника, ограничения получателя, истечение/отмену/повторное использование, decline, конкурентное принятие, конкурирующее создание/вступление, самостоятельный выход и гонку выхода со вступлением.
 
@@ -94,4 +97,37 @@ supabase gen types typescript --local --schema public > /tmp/kolo-database.types
 
 ## Ручная проверка на тестовом Supabase
 
-Двумя разными браузерными профилями: регистрация → письмо → callback → вход → перезагрузка с восстановлением сессии → редактирование профиля → создание solo-пространства → ссылка на email второго → вход второго → принятие → появление партнёра у обоих (polling до 15 секунд). Отдельно: неверный email получателя, decline, истечение, повторная ссылка, смена пароля по письму, offline/online и выход из аккаунта/пары. После выхода профили бывших партнёров больше не доступны через API. Реальная доставка писем и end-to-end GoTrue требуют настроенного тестового проекта и не проверяются vanilla PostgreSQL тестами.
+Двумя разными браузерными профилями: регистрация → письмо → callback → вход → перезагрузка с восстановлением сессии → редактирование профиля → создание solo-пространства → ссылка на email второго → вход второго → принятие → появление партнёра у обоих (polling до 15 секунд). Отдельно: неверный email получателя, decline, истечение, повторная ссылка, смена пароля по письму, offline/online и выход из аккаунта/пары. После выхода профили бывших партнёров больше не доступны через API. Внешняя доставка писем и hosted Dashboard требуют отдельной ручной проверки. Vanilla PostgreSQL тесты дополняются отдельными локальными Supabase integration-тестами ниже.
+
+
+## Проверка на настоящем локальном Supabase
+
+`npm run test:supabase -- /tmp/kolo-supabase-status.json` — отдельный opt-in runner для **выделенного disposable local Supabase**, никогда не для рабочего проекта. Нужен Node 24 (нативное выполнение TypeScript для production callback handler). Runner разрешает только loopback API/DB/Mailpit, не читает удалённые credentials, создаёт временных Auth-пользователей и удаляет их в finally. Если схемы ещё нет, применяет миграцию к этой **локальной** базе; существующие роли/auth.users не подменяет, bootstrap.sql не использует. Для настоящей проверки backfill запускайте на свежем локальном проекте.
+
+Пример подготовки отдельной среды вне checkout (воспроизведено с CLI 2.121.0):
+
+```sh
+mkdir -p /tmp/kolo-supabase-review
+SUPABASE_HOME=/tmp/kolo-supabase-cli npx supabase@2.121.0 init --workdir /tmp/kolo-supabase-review
+```
+
+В сгенерированном `/tmp/kolo-supabase-review/supabase/config.toml`: включите `auth.email.enable_confirmations`, задайте additional_redirect_urls `http://127.0.0.1:5173/auth/callback` и `http://127.0.0.1:5173/auth/update-password`, локальные `auth.rate_limit.email_sent = 100` и `auth.email.max_frequency = "0s"` (или выдерживайте заданный интервал между тестовыми письмами). Не переносите тестовые лимиты в production.
+
+```sh
+SUPABASE_USE_SLIM_IMAGES=true SUPABASE_HOME=/tmp/kolo-supabase-cli npx supabase@2.121.0 start --workdir /tmp/kolo-supabase-review --exclude realtime,storage-api,imgproxy,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+SUPABASE_HOME=/tmp/kolo-supabase-cli npx supabase@2.121.0 status --workdir /tmp/kolo-supabase-review -o json > /tmp/kolo-supabase-status.json
+npm run test:supabase -- /tmp/kolo-supabase-status.json
+```
+
+Status-файл содержит **локальные** keys; держите его вне репозитория, не выводите в чат/логи, удалите после проверки. Для npm в cloud при необходимости используйте cache `/tmp/kolo-npm`. Если CLI health check попадает в HTTP proxy, сначала диагностируйте прямой `GET /auth/v1/health`: в текущей среде прямой запрос вернул 200, а встроенный wget из контейнера через proxy — 403. `--ignore-health-check` использовался только для сохранения диагностируемых контейнеров; успешность проверок подтверждена реальными Auth/REST запросами, не кодом выхода CLI.
+
+Проверено на локальных PostgreSQL 17.11, GoTrue v2.197.0, PostgREST v16.4, Mailpit v1.31.3: применение миграции после существующего Auth-пользователя и backfill, Auth signup trigger при ограниченных grants, письмо подтверждения через Mailpit и PKCE callback, JWT/RLS через настоящий REST, запрет внутренних RPC, создание/принятие/выход из пары, recovery email → PASSWORD_RECOVERY → смена пароля → вход новым паролем. Просроченный PKCE проверяется настоящим старением `auth.flow_state` в disposable БД; отдельно проверяются отсутствующий verifier и Auth error redirect. Production handler вызывается напрямую с настоящим SDK/GoTrue, UI-гейты — в jsdom тестах.
+
+После проверки остановите только этот локальный проект:
+
+```sh
+SUPABASE_HOME=/tmp/kolo-supabase-cli npx supabase@2.121.0 stop --workdir /tmp/kolo-supabase-review --no-backup
+rm /tmp/kolo-supabase-status.json
+```
+
+Удалённые Supabase, миграции production, внешний SMTP и hosted Dashboard в рамках этой проверки не изменялись и не проверялись.

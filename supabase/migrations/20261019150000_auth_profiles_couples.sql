@@ -179,4 +179,6 @@ grant select on public.profiles, public.couple_spaces, public.couple_members to 
 grant update(display_name, avatar_url) on public.profiles to authenticated;
 grant select(id, space_id, created_by, recipient_email, created_at, expires_at, consumed_at, accepted_by, declined_at, revoked_at) on public.couple_invitations to authenticated;
 revoke all on function public.is_space_member(uuid), public.is_partner(uuid), public.initialize_profile(), public.touch_profile(), public.require_verified_user(), public.create_couple_space(), public.create_couple_invitation(text), public.inspect_couple_invitation(text), public.resolve_couple_invitation(text, boolean), public.leave_couple_space() from public, anon, authenticated;
+-- Policy predicates intentionally need authenticated EXECUTE during RLS evaluation;
+-- they return only a caller-scoped boolean. Trigger/verified-user helpers remain denied.
 grant execute on function public.is_space_member(uuid), public.is_partner(uuid), public.create_couple_space(), public.create_couple_invitation(text), public.inspect_couple_invitation(text), public.resolve_couple_invitation(text, boolean), public.leave_couple_space() to authenticated;

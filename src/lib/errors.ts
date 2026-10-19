@@ -21,20 +21,22 @@ export function errorMessage(error: unknown): string {
     otp_expired: 'Ссылка истекла. Запросите новое письмо.',
     email_address_invalid: 'Проверьте адрес электронной почты.',
   }
-  if (known[code]) return known[code]
+  if (Object.hasOwn(known, code)) return known[code]
   if (
     /Failed to fetch|fetch failed|NetworkError|network|offline/i.test(message)
   )
     return 'Нет связи с сервером. Проверьте сеть и повторите попытку.'
-  if (/already_in_space/.test(message))
+  if (message === 'recovery_required')
+    return 'Откройте новую ссылку восстановления пароля.'
+  if (message === 'already_in_space')
     return 'Вы уже в пространстве. Чтобы присоединиться к другому, сначала выйдите из текущего.'
-  if (/space_full/.test(message)) return 'В пространстве уже два участника.'
-  if (/invitation_unavailable/.test(message))
+  if (message === 'space_full') return 'В пространстве уже два участника.'
+  if (message === 'invitation_unavailable')
     return 'Приглашение недоступно: проверьте аккаунт, срок действия или запросите новую ссылку.'
-  if (/verified_account_required/.test(message))
+  if (message === 'verified_account_required')
     return 'Войдите в аккаунт с подтверждённым email.'
-  if (/cannot_invite_self/.test(message))
+  if (message === 'cannot_invite_self')
     return 'Укажите email партнёра, а не свой.'
-  if (/space_required/.test(message)) return 'Сначала создайте пространство.'
+  if (message === 'space_required') return 'Сначала создайте пространство.'
   return 'Не удалось выполнить действие. Попробуйте ещё раз. Если ошибка повторится, проверьте настройки Supabase.'
 }

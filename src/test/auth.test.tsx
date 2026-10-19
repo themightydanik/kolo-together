@@ -11,11 +11,13 @@ import {
 import { afterEach, expect, test, vi } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { StrictMode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { AuthProvider } from '../features/auth/auth-provider'
 import type { AppClient } from '../features/auth/auth-context'
 import {
   AuthScreen,
+  CallbackScreen,
   ProtectedRoute,
   UpdatePasswordScreen,
 } from '../features/auth/auth-screens'
@@ -28,6 +30,7 @@ import {
   invitationToken,
 } from '../features/auth/invitation-token'
 const session = {
+  access_token: 'test-access',
   user: {
     id: 'user-1',
     email: 'anna@example.test',
@@ -35,16 +38,21 @@ const session = {
   },
 } as Session
 function clientMock(initial: Session | null = null) {
-  let listener: ((event: string, value: Session | null) => void) | undefined
+  const listeners = new Set<(event: string, value: Session | null) => void>()
   const client = {
     auth: {
       getSession: vi
         .fn()
         .mockResolvedValue({ data: { session: initial }, error: null }),
-      onAuthStateChange: vi.fn((fn: typeof listener) => {
-        listener = fn
-        return { data: { subscription: { unsubscribe: vi.fn() } } }
-      }),
+      onAuthStateChange: vi.fn(
+        (fn: (event: string, value: Session | null) => void) => {
+          listeners.add(fn)
+          return {
+            data: { subscription: { unsubscribe: () => listeners.delete(fn) } },
+          }
+        },
+      ),
+      exchangeCodeForSession: vi.fn(),
       signUp: vi.fn().mockResolvedValue({
         data: { session: null, user: null },
         error: null,
@@ -68,25 +76,31 @@ function clientMock(initial: Session | null = null) {
   return {
     client: client as unknown as AppClient,
     raw: client,
-    emit: (value: Session | null) =>
-      listener?.(value ? 'SIGNED_IN' : 'SIGNED_OUT', value),
+    emit: (
+      value: Session | null,
+      event = value ? 'SIGNED_IN' : 'SIGNED_OUT',
+    ) => {
+      for (const listener of listeners) listener(event, value)
+    },
   }
 }
 function renderAuth(
   mock: ReturnType<typeof clientMock>,
   element: React.ReactNode,
   path = '/',
+  strict = false,
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
-  return render(
+  const tree = (
     <QueryClientProvider client={queryClient}>
       <AuthProvider client={mock.client}>
         <MemoryRouter initialEntries={[path]}>{element}</MemoryRouter>
       </AuthProvider>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   )
+  return render(strict ? <StrictMode>{tree}</StrictMode> : tree)
 }
 afterEach(() => {
   cleanup()
@@ -115,6 +129,7 @@ test('protected routes wait for session restoration, redirect anonymous users an
   )
   expect(screen.getByRole('status')).toHaveTextContent('Загружаем')
   expect(screen.queryByText('Private page')).not.toBeInTheDocument()
+  await waitFor(() => expect(mock.raw.auth.getSession).toHaveBeenCalled())
   await act(async () => finish({ data: { session: null }, error: null }))
   expect(await screen.findByText('Login page')).toBeVisible()
   cleanup()
@@ -201,6 +216,8 @@ test('password recovery sends redirect, then saves a validated new password for 
   cleanup()
   const active = clientMock(session)
   renderAuth(active, <UpdatePasswordScreen />)
+  await screen.findByText(/Форма доступна только/)
+  act(() => active.emit(session, 'PASSWORD_RECOVERY'))
   fireEvent.change(await screen.findByLabelText('Новый пароль'), {
     target: { value: 'new-password' },
   })
@@ -328,4 +345,236 @@ test('session restoration errors expose a retry without showing protected conten
   expect(screen.queryByText('Private')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
   expect(await screen.findByText('Login')).toBeVisible()
+})
+
+test('a normal restored session or SIGNED_IN event never enables password recovery', async () => {
+  const mock = clientMock(session)
+  renderAuth(mock, <UpdatePasswordScreen />)
+  expect(await screen.findByText(/Форма доступна только/)).toBeVisible()
+  act(() => mock.emit(session))
+  expect(screen.queryByLabelText('Новый пароль')).not.toBeInTheDocument()
+  expect(mock.raw.auth.updateUser).not.toHaveBeenCalled()
+})
+test.each(['confirmation', 'recovery'])(
+  'successful PKCE %s callback is explicitly exchanged and scrubbed',
+  async (kind) => {
+    const path =
+      kind === 'recovery' ? '/auth/update-password' : '/auth/callback'
+    window.history.replaceState(
+      {},
+      '',
+      `${path}?code=one-use-test-code&sb_flow_id=test-flow`,
+    )
+    const mock = clientMock()
+    mock.raw.auth.exchangeCodeForSession.mockImplementation(async () => {
+      mock.raw.auth.getSession.mockResolvedValue({
+        data: { session },
+        error: null,
+      })
+      mock.emit(
+        session,
+        kind === 'recovery' ? 'PASSWORD_RECOVERY' : 'SIGNED_IN',
+      )
+      return { data: { session, user: session.user }, error: null }
+    })
+    renderAuth(
+      mock,
+      <Routes>
+        <Route path="/auth/callback" element={<CallbackScreen />} />
+        <Route
+          path="/auth/update-password"
+          element={<UpdatePasswordScreen />}
+        />
+        <Route path="/" element={<p>Email confirmed</p>} />
+      </Routes>,
+      path,
+    )
+    if (kind === 'recovery')
+      expect(await screen.findByLabelText('Новый пароль')).toBeVisible()
+    else expect(await screen.findByText('Email confirmed')).toBeVisible()
+    expect(
+      mock.raw.auth.exchangeCodeForSession,
+    ).toHaveBeenCalledExactlyOnceWith('one-use-test-code', {
+      flowId: 'test-flow',
+    })
+    expect(window.location.search).toBe('')
+  },
+)
+test.each(['/auth/callback', '/auth/update-password'])(
+  'expired or failed PKCE on %s cannot borrow an existing session',
+  async (path) => {
+    window.history.replaceState({}, '', `${path}?code=expired-code`)
+    const mock = clientMock(session)
+    mock.raw.auth.exchangeCodeForSession.mockResolvedValue({
+      data: { session: null },
+      error: { code: 'flow_state_expired', message: 'SQL sensitive detail' },
+    })
+    renderAuth(
+      mock,
+      path === '/auth/callback' ? <CallbackScreen /> : <UpdatePasswordScreen />,
+      path,
+    )
+    expect(
+      await screen.findByText(
+        path === '/auth/callback'
+          ? /Ссылка не подтверждена/
+          : /Форма доступна только/,
+      ),
+    ).toBeVisible()
+    expect(screen.queryByLabelText('Новый пароль')).not.toBeInTheDocument()
+    expect(screen.queryByText(/SQL sensitive/)).not.toBeInTheDocument()
+    expect(mock.raw.auth.updateUser).not.toHaveBeenCalled()
+  },
+)
+test.each(['/auth/callback', '/auth/update-password'])(
+  'Auth URL error on %s is handled before the old session and never echoed',
+  async (path) => {
+    window.history.replaceState(
+      {},
+      '',
+      `${path}?error=access_denied&error_code=otp_expired&error_description=SQL-secret`,
+    )
+    const mock = clientMock(session)
+    renderAuth(
+      mock,
+      path === '/auth/callback' ? <CallbackScreen /> : <UpdatePasswordScreen />,
+      path,
+    )
+    expect(
+      await screen.findByText(
+        path === '/auth/callback'
+          ? /Ссылка не подтверждена/
+          : /Форма доступна только/,
+      ),
+    ).toBeVisible()
+    expect(mock.raw.auth.exchangeCodeForSession).not.toHaveBeenCalled()
+    expect(screen.queryByText(/SQL-secret/)).not.toBeInTheDocument()
+    expect(window.location.search).toBe('')
+  },
+)
+test('a valid confirmation code on the password route does not authorize a password change', async () => {
+  window.history.replaceState(
+    {},
+    '',
+    '/auth/update-password?code=confirmation-code&type=recovery',
+  )
+  const mock = clientMock(session)
+  mock.raw.auth.exchangeCodeForSession.mockImplementation(async () => {
+    mock.emit(session, 'SIGNED_IN')
+    return { data: { session }, error: null }
+  })
+  renderAuth(mock, <UpdatePasswordScreen />, '/auth/update-password')
+  expect(await screen.findByText(/Форма доступна только/)).toBeVisible()
+  expect(screen.queryByLabelText('Новый пароль')).not.toBeInTheDocument()
+})
+
+test('Strict Mode does not exchange a one-use recovery code twice', async () => {
+  window.history.replaceState(
+    {},
+    '',
+    '/auth/update-password?code=strict-mode-code',
+  )
+  const mock = clientMock()
+  mock.raw.auth.exchangeCodeForSession.mockImplementation(async () => {
+    await Promise.resolve()
+    mock.raw.auth.getSession.mockResolvedValue({
+      data: { session },
+      error: null,
+    })
+    mock.emit(session, 'PASSWORD_RECOVERY')
+    return { data: { session }, error: null }
+  })
+  renderAuth(mock, <UpdatePasswordScreen />, '/auth/update-password', true)
+  expect(await screen.findByLabelText('Новый пароль')).toBeVisible()
+  expect(mock.raw.auth.exchangeCodeForSession).toHaveBeenCalledTimes(1)
+})
+test('failed verifier exchange does not expose the form or exception text', async () => {
+  window.history.replaceState(
+    {},
+    '',
+    '/auth/update-password?code=verifier-error',
+  )
+  const mock = clientMock(session)
+  mock.raw.auth.exchangeCodeForSession.mockRejectedValue(
+    new Error('PKCE verifier missing, internal SQL'),
+  )
+  renderAuth(mock, <UpdatePasswordScreen />, '/auth/update-password')
+  expect(await screen.findByText(/Форма доступна только/)).toBeVisible()
+  expect(screen.queryByText(/internal SQL/)).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('Новый пароль')).not.toBeInTheDocument()
+})
+test('signing out revokes an in-memory recovery grant', async () => {
+  const mock = clientMock(session)
+  renderAuth(mock, <UpdatePasswordScreen />)
+  await screen.findByText(/Форма доступна только/)
+  act(() => mock.emit(session, 'PASSWORD_RECOVERY'))
+  expect(await screen.findByLabelText('Новый пароль')).toBeVisible()
+  act(() => mock.emit(null))
+  expect(screen.queryByLabelText('Новый пароль')).not.toBeInTheDocument()
+  act(() => mock.emit(session))
+  expect(screen.queryByLabelText('Новый пароль')).not.toBeInTheDocument()
+})
+
+test('completed recovery proof cannot be reused after provider remount', async () => {
+  window.history.replaceState({}, '', '/auth/update-password?code=one-recovery')
+  const mock = clientMock()
+  mock.raw.auth.exchangeCodeForSession.mockImplementation(async () => {
+    mock.raw.auth.getSession.mockResolvedValue({
+      data: { session },
+      error: null,
+    })
+    mock.emit(session, 'PASSWORD_RECOVERY')
+    return { data: { session }, error: null }
+  })
+  renderAuth(mock, <UpdatePasswordScreen />, '/auth/update-password')
+  fireEvent.change(await screen.findByLabelText('Новый пароль'), {
+    target: { value: 'updated-password' },
+  })
+  fireEvent.change(screen.getByLabelText('Повторите пароль'), {
+    target: { value: 'updated-password' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить пароль' }))
+  expect(await screen.findByRole('status')).toHaveTextContent('Пароль обновлён')
+  cleanup()
+  renderAuth(mock, <UpdatePasswordScreen />, '/auth/update-password')
+  expect(await screen.findByText(/Форма доступна только/)).toBeVisible()
+  expect(screen.queryByLabelText('Новый пароль')).not.toBeInTheDocument()
+  expect(mock.raw.auth.exchangeCodeForSession).toHaveBeenCalledTimes(1)
+})
+test('expired in-memory recovery authorization is checked again at submit', async () => {
+  const mock = clientMock(session)
+  renderAuth(mock, <UpdatePasswordScreen />)
+  await screen.findByText(/Форма доступна только/)
+  act(() => mock.emit(session, 'PASSWORD_RECOVERY'))
+  fireEvent.change(await screen.findByLabelText('Новый пароль'), {
+    target: { value: 'updated-password' },
+  })
+  fireEvent.change(screen.getByLabelText('Повторите пароль'), {
+    target: { value: 'updated-password' },
+  })
+  vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 11 * 60_000)
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить пароль' }))
+  expect(await screen.findByText(/Форма доступна только/)).toBeVisible()
+  expect(mock.raw.auth.updateUser).not.toHaveBeenCalled()
+})
+
+test('a session-read Auth event cannot leave a recovery proof reusable', async () => {
+  window.history.replaceState({}, '', '/auth/update-password?code=session-race')
+  const mock = clientMock()
+  mock.raw.auth.exchangeCodeForSession.mockImplementation(async () => {
+    mock.emit(session, 'PASSWORD_RECOVERY')
+    mock.raw.auth.getSession
+      .mockImplementationOnce(async () => {
+        mock.emit(session, 'TOKEN_REFRESHED')
+        return { data: { session }, error: null }
+      })
+      .mockResolvedValue({ data: { session }, error: null })
+    return { data: { session }, error: null }
+  })
+  renderAuth(mock, <UpdatePasswordScreen />, '/auth/update-password')
+  expect(await screen.findByLabelText('Новый пароль')).toBeVisible()
+  cleanup()
+  renderAuth(mock, <UpdatePasswordScreen />, '/auth/update-password')
+  expect(await screen.findByText(/Форма доступна только/)).toBeVisible()
+  expect(mock.raw.auth.exchangeCodeForSession).toHaveBeenCalledTimes(1)
 })

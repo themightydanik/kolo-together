@@ -136,8 +136,16 @@ test('joining a space does not reveal historical invite recipient emails', async
   await create(1)
   const token = await invite(1, 2)
   await resolve(2, token)
-  assert.equal((await asUser(2, 'select recipient_email from public.couple_invitations')).length, 0)
-  assert.equal((await asUser(1, 'select recipient_email from public.couple_invitations')).length, 1)
+  assert.equal(
+    (await asUser(2, 'select recipient_email from public.couple_invitations'))
+      .length,
+    0,
+  )
+  assert.equal(
+    (await asUser(1, 'select recipient_email from public.couple_invitations'))
+      .length,
+    1,
+  )
 })
 test('cannot forge membership, add others, change another membership or add a third seat', async () => {
   const space = await create(1)
@@ -345,4 +353,34 @@ test('competing recipients can never fill a third seat even with two pending inv
     ).rowCount,
     2,
   )
+})
+
+test('all helper/RPC privileges, PUBLIC inheritance and fixed search_path match the allowlist', async () => {
+  await pool.query(await readFile('supabase/tests/privileges.sql', 'utf8'))
+  for (const role of [null, 1]) {
+    for (const fn of [
+      'initialize_profile',
+      'touch_profile',
+      'require_verified_user',
+    ]) {
+      await assert.rejects(
+        asUser(role, `select public.${fn}()`),
+        (error) => error.code === '42501',
+      )
+    }
+  }
+  for (const fn of [
+    'create_couple_space()',
+    "create_couple_invitation('test@example.test')",
+    "inspect_couple_invitation('test')",
+    "resolve_couple_invitation('test',true)",
+    'leave_couple_space()',
+    'is_space_member(null)',
+    'is_partner(null)',
+  ]) {
+    await assert.rejects(
+      asUser(null, `select public.${fn}`),
+      (error) => error.code === '42501',
+    )
+  }
 })

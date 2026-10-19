@@ -21,7 +21,8 @@ export const supabase = isSupabaseConfigured(url, key)
       auth: {
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: true,
+        // Handled explicitly after subscribing, so PKCE errors cannot be hidden by an old session.
+        detectSessionInUrl: false,
         flowType: 'pkce',
       },
     })

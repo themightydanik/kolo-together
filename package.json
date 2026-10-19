@@ -12,7 +12,8 @@
     "test": "vitest run && npm run test:db",
     "test:watch": "vitest",
     "test:unit": "vitest run",
-    "test:db": "node scripts/test-database.mjs"
+    "test:db": "node scripts/test-database.mjs",
+    "test:supabase": "node scripts/test-supabase.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.2",
