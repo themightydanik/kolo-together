@@ -887,6 +887,7 @@ test('task functions and tables have exact effective grants without PUBLIC or an
   await pool.query(await readFile('supabase/tests/task-privileges.sql', 'utf8'))
   for (const sql of [
     'select public.materialize_task(null)',
+    'select public.task_clock()',
     "select public.task_period('daily',current_date)",
     'select public.close_tasks_on_departure()',
   ]) {
@@ -995,4 +996,140 @@ test('joint rewards require exactly two accepted current members even after priv
  await assert.rejects(complete(1,i.id),/task_unavailable/)
  assert.deepEqual(await progress(1),{xp:0,coins:0})
  assert.equal((await pool.query('select * from public.reward_ledger')).rowCount,0)
+})
+
+test('completion authorization remains explicit even if instance visibility is widened', async () => {
+  await pair()
+  await create(3)
+  const personal = await task(1)
+  const foreign = await task(3)
+  await complete(1, (await instance(personal)).id)
+  await complete(3, (await instance(foreign)).id)
+  const c = await pool.connect()
+  try {
+    await c.query('begin')
+    // Defense-in-depth regression: completion privacy must not rely solely on
+    // the implementation of the instance policy. This DDL is rolled back.
+    await c.query('drop policy instances_read on public.task_instances')
+    await c.query('create policy instances_read on public.task_instances for select to authenticated using(true)')
+    await c.query('set local role authenticated')
+    for (const [n, expected] of [[1, 1], [2, 0], [3, 1], [4, 0]]) {
+      await c.query("select set_config('request.jwt.claim.sub',$1,true)", [uid(n)])
+      assert.equal((await c.query('select * from public.task_completions')).rowCount, expected)
+    }
+  } finally {
+    await c.query('rollback')
+    c.release()
+  }
+})
+
+test('daily and weekly boundary lock waits expire partial history and materialize exactly once', async () => {
+  const original = (await pool.query("select pg_get_functiondef('public.task_clock()'::regprocedure) as def")).rows[0].def
+  await pool.query('create table public.review_clock(day date not null)')
+  try {
+    // A privileged disposable-DB fixture only; no clock parameter or EXECUTE
+    // grant is added to any production/client RPC.
+    await pool.query(`create or replace function public.task_clock()
+      returns timestamptz language sql volatile set search_path='' as $$
+      select day::timestamp at time zone 'UTC' from public.review_clock $$`)
+    const space = await pair()
+    for (const recurrence of ['daily', 'weekly']) {
+      await pool.query("truncate public.review_clock")
+      await pool.query("insert into public.review_clock values('2030-01-07')")
+      const id = await task(1, {kind: 'joint', recurrence})
+      await respond(2, id)
+      const old = await instance(id)
+      await complete(1, old.id)
+      const blocker = await pool.connect()
+      const waiter = await pool.connect()
+      let pending
+      try {
+        await blocker.query('begin')
+        await blocker.query('select 1 from public.couple_spaces where id=$1 for update', [space])
+        await waiter.query('begin')
+        await waiter.query('set local role authenticated')
+        await waiter.query("select set_config('request.jwt.claim.sub',$1,true)", [uid(2)])
+        const pid = (await waiter.query('select pg_backend_pid() as id')).rows[0].id
+        pending = waiter.query('select public.complete_task_instance($1)', [old.id]).then(
+          () => ({ok: true}), error => ({error}),
+        )
+        let blocked = false
+        for (let attempt=0; attempt<200; attempt++) {
+          blocked = (await pool.query("select wait_event_type='Lock' as blocked from pg_stat_activity where pid=$1", [pid])).rows[0].blocked
+          if (blocked) break
+          await new Promise(resolve => setTimeout(resolve, 10))
+        }
+        assert.equal(blocked, true, 'completion must actually wait across the boundary')
+        await pool.query("update public.review_clock set day=day+$1::integer", [recurrence==='daily' ? 1 : 7])
+        await blocker.query('commit')
+        const result = await pending
+        assert.match(result.error?.message ?? '', /task_period_expired/)
+      } finally {
+        await blocker.query('rollback')
+        if (pending) await pending
+        await waiter.query('rollback')
+        blocker.release()
+        waiter.release()
+      }
+      await Promise.all([asUser(1,'select public.refresh_task_instances()'), asUser(2,'select public.refresh_task_instances()'), asUser(1,'select public.refresh_task_instances()')])
+      assert.equal((await pool.query('select status from public.task_instances where id=$1',[old.id])).rows[0].status, 'expired')
+      assert.equal((await pool.query('select * from public.task_instances where task_id=$1',[id])).rowCount, 2)
+      assert.equal((await pool.query('select * from public.task_completions where instance_id=$1',[old.id])).rowCount, 1)
+      assert.equal((await pool.query('select * from public.reward_ledger where instance_id=$1',[old.id])).rowCount, 1)
+      const current = await instance(id)
+      await Promise.all([complete(1,current.id),complete(2,current.id),complete(1,current.id),complete(2,current.id)])
+      assert.equal((await pool.query('select * from public.reward_ledger where instance_id=$1',[current.id])).rowCount, 3)
+      assert.equal((await pool.query('select * from public.task_completions where instance_id=$1',[current.id])).rowCount, 2)
+    }
+  } finally {
+    await pool.query(original)
+    await pool.query('drop table public.review_clock')
+  }
+})
+
+test('failure of the final shared award rolls back completion and personal award; retry awards once', async () => {
+  const space = await pair()
+  const id = await task(1,{kind:'joint'})
+  await respond(2,id)
+  const i = await instance(id)
+  await complete(1,i.id)
+  await pool.query('insert into public.space_progress values($1,9007199254740991)',[space])
+  await assert.rejects(complete(2,i.id), /check constraint/)
+  assert.deepEqual(await progress(2),{xp:0,coins:0})
+  assert.equal((await pool.query('select * from public.task_completions where instance_id=$1',[i.id])).rowCount,1)
+  assert.equal((await pool.query('select * from public.reward_ledger where instance_id=$1',[i.id])).rowCount,1)
+  assert.equal((await instance(id)).status,'active')
+  await pool.query('update public.space_progress set together_xp=0 where space_id=$1',[space])
+  await Promise.all([complete(2,i.id),complete(2,i.id)])
+  assert.deepEqual(await progress(1),{xp:20,coins:10})
+  assert.deepEqual(await progress(2),{xp:20,coins:10})
+  assert.equal((await pool.query('select * from public.reward_ledger where instance_id=$1',[i.id])).rowCount,3)
+  assert.equal((await pool.query('select together_xp::integer as xp from public.space_progress where space_id=$1',[space])).rows[0].xp,20)
+})
+
+test('cancel, departure and rejoining preserve historical consent and rewards without revival', async () => {
+  await pair()
+  const cancelled = await task(1,{kind:'joint'})
+  await respond(2,cancelled)
+  await asUser(1,'select public.cancel_task($1)',[cancelled])
+  const partial = await task(1,{kind:'joint',recurrence:'daily'})
+  await respond(2,partial)
+  const old = await instance(partial)
+  await complete(1,old.id)
+  const pending = await task(1,{kind:'proposal'})
+  await asUser(2,'select public.leave_couple_space()')
+  await resolve(2,await invite(1,2))
+  for (const id of [cancelled,partial,pending]) {
+    assert.equal((await pool.query('select status from public.tasks where id=$1',[id])).rows[0].status,'cancelled')
+    await assert.rejects(respond(2,id),/task_transition_denied/)
+    if (id!==pending) await assert.rejects(complete(2,(await instance(id)).id),/task_unavailable/)
+  }
+  await Promise.all([asUser(1,'select public.refresh_task_instances()'),asUser(2,'select public.refresh_task_instances()')])
+  assert.equal((await pool.query('select * from public.task_instances where task_id=$1',[partial])).rowCount,1)
+  assert.equal((await instance(partial)).status,'cancelled')
+  assert.equal((await pool.query('select * from public.task_participants where task_id=$1 and consent=\'accepted\'',[partial])).rowCount,2)
+  assert.equal((await pool.query('select * from public.task_completions')).rowCount,1)
+  assert.equal((await pool.query('select * from public.reward_ledger')).rowCount,1)
+  assert.deepEqual(await progress(1),{xp:20,coins:10})
+  assert.equal((await complete(1,old.id))[0].result.already_completed,true)
 })

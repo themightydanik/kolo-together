@@ -186,6 +186,12 @@ try {
         'utf8',
       ),
     )
+  await db.query(
+    await readFile(
+      'supabase/migrations/20261019190000_tasks_security_review.sql',
+      'utf8',
+    ),
+  )
   await db.query(await readFile('supabase/tests/task-privileges.sql', 'utf8'))
   await db.query(await readFile('supabase/tests/privileges.sql', 'utf8'))
   await db.query("notify pgrst,'reload schema'")
@@ -440,6 +446,23 @@ try {
     ).length,
     0,
   )
+  for (const [sdk, instanceId, expected] of [
+    [a, personalInstance.id, 1],
+    [b, personalInstance.id, 0],
+    [c, personalInstance.id, 0],
+    [b, ji.id, 2],
+    [c, ji.id, 0],
+  ]) {
+    assert.equal(
+      check(
+        await sdk.from('task_completions').select('*').eq('instance_id', instanceId),
+        'Explicit completion privacy through real JWT/RLS',
+      ).length,
+      expected,
+    )
+  }
+  for (const sdk of [a, anon])
+    assert.ok((await sdk.rpc('task_clock')).error, 'Internal clock is not a client RPC')
   assert.ok(
     (
       await a

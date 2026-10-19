@@ -1,4 +1,4 @@
-/** Schema snapshot through 20261019170000_tasks_economy.sql.
+/** Schema snapshot through 20261019190000_tasks_security_review.sql.
  * Refresh with Supabase CLI (see docs/supabase.md) and review the diff. */
 export type Profile = {
   id: string

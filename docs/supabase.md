@@ -142,7 +142,7 @@ rm /tmp/kolo-supabase-status.json
 Порядок для отдельно разрешённого staging:
 
 1. Проверить целевой project ref и резервную копию; убедиться, что Auth-миграция уже применена.
-2. `supabase db push --dry-run` должен показывать только непроведённые миграции. Проверить `20261019170000_tasks_economy.sql`.
+2. `supabase db push --dry-run` должен показывать только непроведённые миграции. Проверить `20261019170000_tasks_economy.sql` и последующую `20261019190000_tasks_security_review.sql`. Review-миграция усиливает completion RLS и использует серверное время после блокировок; публичные сигнатуры/переменные не меняются. Внутренний `task_clock()` не имеет EXECUTE для PUBLIC/anon/authenticated.
 3. Только после отдельного разрешения: `supabase db push`. Не применять эту команду автоматически из setup/start scripts или CI.
 4. Проверить read-only audits `supabase/tests/privileges.sql` и `task-privileges.sql` через SQL Editor, если этот доступ разрешён. Они не изменяют данные.
 5. Обновить DB-типы через штатный CLI по инструкции выше, просмотреть diff, выполнить проверки. Текущий typed snapshot включает новые таблицы/RPC; Insert/Update для клиентских task/economy таблиц намеренно never. SQL grants/RLS остаются источником безопасности независимо от TypeScript.
