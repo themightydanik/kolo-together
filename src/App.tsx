@@ -1,3 +1,4 @@
+import { DemoStatistics } from './features/statistics/screens'
 import { useState } from 'react'
 import {
   BrowserRouter,
@@ -273,29 +274,32 @@ function DemoWorkspace() {
       <Route
         path="/us"
         element={
-          <Card>
-            <div className="mb-5 flex gap-2">
-              <span className="avatar">А</span>
-              <span className="avatar">Б</span>
-            </div>
-            <h2 className="text-xl font-semibold">
-              Два человека. Одна команда.
-            </h2>
-            <p className="mt-3 text-muted-foreground">
-              У обоих равные права. Поддержка важнее контроля, а общий прогресс
-              важнее сравнения.
-            </p>
-            <div className="mt-6 rounded-2xl bg-muted p-4 text-sm">
-              <CheckCheck className="mb-2 text-primary" />
-              <p>
-                Автоматическое подтверждение дел по умолчанию. Другие правила —
-                только по взаимному согласию.
+          <div className="space-y-5">
+            <DemoStatistics />
+            <Card>
+              <div className="mb-5 flex gap-2">
+                <span className="avatar">А</span>
+                <span className="avatar">Б</span>
+              </div>
+              <h2 className="text-xl font-semibold">
+                Два человека. Одна команда.
+              </h2>
+              <p className="mt-3 text-muted-foreground">
+                У обоих равные права. Поддержка важнее контроля, а общий
+                прогресс важнее сравнения.
               </p>
-            </div>
-            <p className="mt-4 text-xs text-muted-foreground">
-              Демо-профили · приглашения и авторизация ещё не подключены.
-            </p>
-          </Card>
+              <div className="mt-6 rounded-2xl bg-muted p-4 text-sm">
+                <CheckCheck className="mb-2 text-primary" />
+                <p>
+                  Автоматическое подтверждение дел по умолчанию. Другие правила
+                  — только по взаимному согласию.
+                </p>
+              </div>
+              <p className="mt-4 text-xs text-muted-foreground">
+                Демо-профили · приглашения и авторизация ещё не подключены.
+              </p>
+            </Card>
+          </div>
         }
       />
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -159,6 +159,8 @@ export function useGoalAction(workspace?: GoalsWorkspace) {
     onSuccess: () =>
       Promise.all([
         cache.invalidateQueries({ queryKey: ['couple-goals'] }),
+        cache.invalidateQueries({ queryKey: ['statistics'] }),
+        cache.invalidateQueries({ queryKey: ['joint-history'] }),
         cache.invalidateQueries({ queryKey: ['task-workspace'] }),
       ]),
     onError: () => cache.invalidateQueries({ queryKey: ['couple-goals'] }),

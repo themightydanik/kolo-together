@@ -1,4 +1,9 @@
-/** Schema snapshot through 20261020090000_couple_goals.sql.
+import type {
+  Statistics,
+  HistoryPage,
+  HistoryCursor,
+} from '../features/statistics/model'
+/** Schema snapshot through 20261020120000_achievements_statistics.sql.
  * Refresh with Supabase CLI (see docs/supabase.md) and review the diff. */
 export type Profile = {
   id: string
@@ -275,6 +280,29 @@ type Table<Row, Insert, Update> = {
 export type Database = {
   public: {
     Tables: {
+      statistics_history_sessions: Table<
+        {
+          id: string
+          user_id: string
+          context: string
+          snapshot: string
+          until_at: string
+          created_at: string
+          expires_at: string
+        },
+        never,
+        never
+      >
+      statistics_seen: Table<
+        {
+          user_id: string
+          context: string
+          codes: string[]
+          updated_at: string
+        },
+        never,
+        never
+      >
       couple_goals: Table<CoupleGoal, never, never>
       goal_consents: Table<GoalConsent, never, never>
       goal_steps: Table<GoalStep, never, never>
@@ -310,6 +338,15 @@ export type Database = {
     }
     Views: { goal_progress: { Row: GoalProgress; Relationships: [] } }
     Functions: {
+      get_statistics: { Args: Record<string, never>; Returns: Statistics }
+      get_joint_history: {
+        Args: { p_cursor: HistoryCursor | null; p_limit: number }
+        Returns: HistoryPage
+      }
+      acknowledge_statistics: {
+        Args: Record<string, never>
+        Returns: string[]
+      }
       inspect_goal_request: {
         Args: { p_request_id: string; p_goal_id: string | null }
         Returns: { id: string; status: string; kind: string } | null

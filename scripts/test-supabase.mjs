@@ -887,6 +887,96 @@ try {
     ).rowCount,
     0,
   )
+  step = 'statistics migration, real JWT aggregates and server pagination'
+  if (
+    !(await db.query("select to_regclass('public.statistics_seen') as name"))
+      .rows[0].name
+  )
+    await db.query(
+      await readFile(
+        'supabase/migrations/20261020120000_achievements_statistics.sql',
+        'utf8',
+      ),
+    )
+  await db.query(
+    await readFile('supabase/tests/statistics-privileges.sql', 'utf8'),
+  )
+  await db.query("notify pgrst,'reload schema'")
+  let stats
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const result = await a.rpc('get_statistics')
+    if (!result.error) {
+      stats = result.data
+      break
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  assert.ok(stats, 'PostgREST statistics schema reload')
+  assert.equal(stats.shared.together_xp, 70)
+  assert.equal(stats.shared.tasks, 1)
+  assert.equal(stats.shared.goals, 1)
+  assert.equal(stats.personal.coins, beforeGoalCoins.balance)
+  assert.equal(stats.calendar.length, 30)
+  assert.equal(stats.badges.length, 13)
+  assert.deepEqual(
+    check(await a.rpc('acknowledge_statistics'), 'Silent historical baseline'),
+    [],
+  )
+  assert.deepEqual(
+    check(await a.rpc('acknowledge_statistics'), 'Reload acknowledgement'),
+    [],
+  )
+  const statisticsPage = check(
+    await a.rpc('get_joint_history', { p_cursor: null, p_limit: 1 }),
+    'History first server page',
+  )
+  assert.equal(statisticsPage.items.length, 1)
+  assert.ok(statisticsPage.next_cursor)
+  const statisticsPage2 = check(
+    await a.rpc('get_joint_history', {
+      p_cursor: statisticsPage.next_cursor,
+      p_limit: 20,
+    }),
+    'History keyset continuation',
+  )
+  assert.ok(
+    statisticsPage2.items.every((x) => x.key !== statisticsPage.items[0].key),
+  )
+  assert.ok(
+    (
+      await b.rpc('get_joint_history', {
+        p_cursor: statisticsPage.next_cursor,
+        p_limit: 20,
+      })
+    ).error,
+    'Cursor actor binding',
+  )
+  assert.ok(
+    (
+      await a
+        .from('statistics_seen')
+        .update({ codes: ['forged'] })
+        .eq('user_id', created[1])
+    ).error,
+    'Seen direct writes denied',
+  )
+  assert.ok(
+    (await a.rpc('statistics_badges')).error,
+    'Internal aggregation helper denied',
+  )
+  assert.ok(
+    (await a.from('statistics_joint_facts').select('*')).error,
+    'Raw facts view denied',
+  )
+  const isolatedStats = check(
+    await c.rpc('get_statistics'),
+    'Isolated account statistics',
+  )
+  assert.equal(isolatedStats.shared.tasks, 0)
+  assert.equal(isolatedStats.shared.goals, 0)
+  console.log(
+    'PASS: statistics historical facts, 13 badges, exact balances, UTC calendar, JWT privacy, keyset pagination and silent acknowledgement',
+  )
   const unfinishedGoal = await createGoal()
   check(
     await b.rpc('resolve_goal_consent', {
@@ -997,6 +1087,22 @@ try {
       .length,
     0,
   )
+  assert.ok(
+    (
+      await a.rpc('get_joint_history', {
+        p_cursor: statisticsPage.next_cursor,
+        p_limit: 20,
+      })
+    ).error,
+    'Departure invalidates old history cursor',
+  )
+  assert.equal(
+    check(
+      await b.rpc('get_joint_history', { p_cursor: null, p_limit: 20 }),
+      'Departed history',
+    ).items.length,
+    0,
+  )
   const rejoinToken = check(
     await a.rpc('create_couple_invitation', { p_email: email('b') }),
     'Invite original partner back',
@@ -1030,6 +1136,21 @@ try {
       p_accept: true,
     }),
     'New partner joins',
+  )
+  const replacementStats = check(
+    await c.rpc('get_statistics'),
+    'New partner safe statistics',
+  )
+  assert.equal(replacementStats.shared.together_xp, 70)
+  assert.equal(replacementStats.shared.tasks, 0)
+  assert.equal(replacementStats.shared.goals, 0)
+  assert.equal(replacementStats.shared.xp_series_complete, false)
+  assert.equal(
+    check(
+      await c.rpc('get_joint_history', { p_cursor: null, p_limit: 20 }),
+      'New partner private history',
+    ).items.length,
+    0,
   )
   for (const table of [
     'couple_goals',

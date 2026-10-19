@@ -100,6 +100,8 @@ export function useRewardAction() {
       await Promise.all([
         cache.invalidateQueries({ queryKey: ['reward-store'] }),
         cache.invalidateQueries({ queryKey: ['task-workspace'] }),
+        cache.invalidateQueries({ queryKey: ['statistics'] }),
+        cache.invalidateQueries({ queryKey: ['joint-history'] }),
       ])
     },
   })
