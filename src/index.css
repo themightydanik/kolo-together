@@ -1,0 +1,22 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--primary);
+  --color-destructive: var(--destructive);
+}
+:root { font-family: 'Avenir Next', 'Segoe UI', sans-serif; font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; --background: #faf8f5; --foreground: #302b38; --card: #fffefa; --primary: #7651aa; --primary-foreground: #ffffff; --muted: #f0ece6; --muted-foreground: #716777; --border: #e6e0e7; --destructive: #ac3245; }
+.dark { color-scheme: dark; --background: #211e26; --foreground: #f4edf8; --card: #2b2632; --primary: #c8a5fa; --primary-foreground: #2c1747; --muted: #39313f; --muted-foreground: #bdb0c7; --border: #4a3f55; --destructive: #ff9faa; }
+body { margin: 0; min-width: 320px; }
+button, a, input { -webkit-tap-highlight-color: transparent; }
+button { cursor: pointer; }
+.hero { background: linear-gradient(120deg, #eee3f8 0%, #f4e6dd 100%); color: #463352; }
+.avatar { display: flex; align-items: center; justify-content: center; width: 3rem; height: 3rem; border-radius: 50%; background: var(--muted); color: var(--primary); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
