@@ -22,3 +22,5 @@
 - Магазин: сохраняйте reward_ledger положительным, coin_transactions — единственным зеркалом earn/spend/refund. Не удваивайте historical backfill. Порядок блокировок user → space → offer → purchase → progress; возврат не берёт чужой advisory lock. Проверяйте согласия, snapshots, request keys, single-use, rollback и leave refunds на PostgreSQL.
 
 - Покупки: сохраняйте UUID и исходный p_expected_purchases одним intent; retry не должен брать свежий counter. Ошибка reward_purchase_changed требует нового явного подтверждения. Backfill проверять полным SQL-файлом на отдельной новой disposable БД, включая missing progress и откат DDL; старые удалённые данные не восстанавливать автоматически.
+
+- Цели: следуйте `docs/couple-goals.md`. Один pending consent на цель; нельзя менять assignment/title начатого шага или принимать за другого. Бонус только в goal_reward_ledger (+50 Together XP) и space_progress, никогда в coin/reward ledger задач. Проверяйте freeze/leave/rejoin, view RLS, конкурентное завершение и COMMIT rollback на PostgreSQL; после изменения членства инвалидируйте couple-goals cache.

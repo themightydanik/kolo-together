@@ -1,4 +1,4 @@
-/** Schema snapshot through 20261019220000_rewards_store.sql.
+/** Schema snapshot through 20261020090000_couple_goals.sql.
  * Refresh with Supabase CLI (see docs/supabase.md) and review the diff. */
 export type Profile = {
   id: string
@@ -35,11 +35,20 @@ export type CoupleInvitation = {
 }
 export type TaskKind = 'personal' | 'proposal' | 'joint'
 export type TaskStatus =
-  'pending' | 'active' | 'completed' | 'declined' | 'cancelled'
+  | 'pending'
+  | 'active'
+  | 'completed'
+  | 'declined'
+  | 'cancelled'
 export type Difficulty = 'easy' | 'normal' | 'hard'
 export type Recurrence = 'once' | 'daily' | 'weekly'
 export type Category =
-  'care' | 'home' | 'communication' | 'time' | 'growth' | 'other'
+  | 'care'
+  | 'home'
+  | 'communication'
+  | 'time'
+  | 'growth'
+  | 'other'
 export type Task = {
   id: string
   request_id: string
@@ -164,6 +173,99 @@ export type CoinSummary = {
   refunded: string
 }
 export type PurchaseAction = 'ready' | 'refuse' | 'cancel' | 'confirm'
+export type GoalCategory =
+  | 'travel'
+  | 'home'
+  | 'relationship'
+  | 'health'
+  | 'learning'
+  | 'other'
+export type GoalStatus =
+  | 'pending'
+  | 'active'
+  | 'paused'
+  | 'completed'
+  | 'closed'
+  | 'declined'
+export type GoalChangeKind =
+  | 'step_add'
+  | 'step_edit'
+  | 'reorder'
+  | 'pause'
+  | 'resume'
+  | 'close'
+  | 'complete'
+export type GoalDecision = 'accept' | 'decline' | 'withdraw'
+export type GoalPayload = {
+  title?: string
+  description?: string
+  assignment?: 'me' | 'partner' | 'both'
+  step_id?: string
+  step_ids?: string[]
+}
+export type CoupleGoal = {
+  id: string
+  request_id: string
+  space_id: string
+  creator_id: string
+  partner_id: string
+  title: string
+  description: string
+  category: GoalCategory
+  emoji: string
+  target_date: string | null
+  status: GoalStatus
+  created_at: string
+  completed_at: string | null
+}
+export type GoalConsent = {
+  id: string
+  goal_id: string
+  request_id: string
+  requester_id: string
+  kind: GoalChangeKind | 'activate'
+  payload: GoalPayload
+  status: 'pending' | 'accepted' | 'declined' | 'withdrawn' | 'void'
+  created_at: string
+  responded_at: string | null
+}
+export type GoalStep = {
+  id: string
+  goal_id: string
+  title: string
+  description: string
+  position: number
+  status: 'active' | 'completed'
+  created_at: string
+  completed_at: string | null
+}
+export type GoalStepParticipant = { step_id: string; user_id: string }
+export type GoalStepCompletion = GoalStepParticipant & { completed_at: string }
+export type GoalEvent = {
+  id: string
+  goal_id: string
+  actor_id: string | null
+  kind: string
+  details: {
+    kind?: GoalConsent['kind']
+    consent_id?: string
+    step_id?: string
+    title?: string
+  }
+  created_at: string
+}
+export type GoalReward = {
+  goal_id: string
+  space_id: string
+  together_xp: number
+  created_at: string
+}
+export type GoalProgress = {
+  goal_id: string
+  total_steps: number
+  completed_steps: number
+  percent: number
+}
 type Table<Row, Insert, Update> = {
   Row: Row
   Insert: Insert
@@ -173,6 +275,13 @@ type Table<Row, Insert, Update> = {
 export type Database = {
   public: {
     Tables: {
+      couple_goals: Table<CoupleGoal, never, never>
+      goal_consents: Table<GoalConsent, never, never>
+      goal_steps: Table<GoalStep, never, never>
+      goal_step_participants: Table<GoalStepParticipant, never, never>
+      goal_step_completions: Table<GoalStepCompletion, never, never>
+      goal_events: Table<GoalEvent, never, never>
+      goal_reward_ledger: Table<GoalReward, never, never>
       reward_offers: Table<RewardOffer, never, never>
       reward_offer_consents: Table<RewardConsent, never, never>
       reward_purchases: Table<RewardPurchase, never, never>
@@ -199,8 +308,35 @@ export type Database = {
         never
       >
     }
-    Views: { [_ in never]: never }
+    Views: { goal_progress: { Row: GoalProgress; Relationships: [] } }
     Functions: {
+      can_read_goal: { Args: { p_goal_id: string }; Returns: boolean }
+      can_read_goal_step: { Args: { p_step_id: string }; Returns: boolean }
+      create_couple_goal: {
+        Args: {
+          p_request_id: string
+          p_title: string
+          p_description: string
+          p_category: GoalCategory
+          p_emoji: string
+          p_target_date: string | null
+        }
+        Returns: string
+      }
+      propose_goal_change: {
+        Args: {
+          p_goal_id: string
+          p_request_id: string
+          p_kind: GoalChangeKind
+          p_payload: GoalPayload
+        }
+        Returns: string
+      }
+      resolve_goal_consent: {
+        Args: { p_consent_id: string; p_decision: GoalDecision }
+        Returns: undefined
+      }
+      complete_goal_step: { Args: { p_step_id: string }; Returns: undefined }
       get_coin_summary: { Args: Record<string, never>; Returns: CoinSummary }
       can_read_reward_offer: { Args: { p_offer_id: string }; Returns: boolean }
       create_reward_offer: {
@@ -225,7 +361,11 @@ export type Database = {
         Returns: undefined
       }
       buy_reward_offer: {
-        Args: { p_offer_id: string; p_request_id: string; p_expected_purchases: number }
+        Args: {
+          p_offer_id: string
+          p_request_id: string
+          p_expected_purchases: number
+        }
         Returns: string
       }
       act_reward_purchase: {
