@@ -29,7 +29,6 @@ import {
   Sun,
   Target,
   Users,
-  Wallet,
 } from 'lucide-react'
 import { Button } from './components/ui/button'
 import { Card } from './components/ui/card'
@@ -55,6 +54,7 @@ import {
   TasksScreen,
   TogetherProgress,
 } from './features/tasks/screens'
+import { RewardsScreen, DemoRewardStore } from './features/rewards/screens'
 import { ProfileScreen } from './features/profile/profile-screen'
 
 const queryClient = new QueryClient({
@@ -275,29 +275,7 @@ function DemoWorkspace() {
           </Card>
         }
       />
-      <Route
-        path="/rewards"
-        element={
-          <div className="space-y-5">
-            <Card>
-              <EmptyState
-                title="Награды со смыслом"
-                description="Позже вы сможете выбирать приятные ритуалы за Coins. В деморежиме покупки и списания отключены."
-              />
-            </Card>
-            <Card>
-              <Wallet className="mb-3 text-primary" aria-hidden="true" />
-              <h2 className="font-semibold">
-                Общий кошелёк — только по желанию
-              </h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Не подключён. Балансы, переводы и платежи не моделируются. Coins
-                — игровые очки, а не деньги.
-              </p>
-            </Card>
-          </div>
-        }
-      />
+      <Route path="/rewards" element={<DemoRewardStore />} />
       <Route
         path="/us"
         element={
@@ -347,7 +325,7 @@ function RealWorkspace() {
         />
         <Route
           path="/rewards"
-          element={<FutureSection title="Награды со смыслом" />}
+          element={<RewardsScreen />}
         />
         <Route
           path="/us"

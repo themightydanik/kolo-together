@@ -145,7 +145,10 @@ export function useTaskAction() {
       if (result.error) throw result.error
       return null
     },
-    onSuccess: () => cache.invalidateQueries({ queryKey: ['task-workspace'] }),
+    onSuccess: () => Promise.all([
+      cache.invalidateQueries({ queryKey: ['task-workspace'] }),
+      cache.invalidateQueries({ queryKey: ['reward-store'] }),
+    ]),
   })
 }
 export function currentInstance(task: Task, data: TaskWorkspace) {

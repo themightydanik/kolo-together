@@ -1,4 +1,4 @@
-/** Schema snapshot through 20261019190000_tasks_security_review.sql.
+/** Schema snapshot through 20261019220000_rewards_store.sql.
  * Refresh with Supabase CLI (see docs/supabase.md) and review the diff. */
 export type Profile = {
   id: string
@@ -102,6 +102,68 @@ export type CompletionResult = {
   coins: number
   together_xp: number
 }
+export type RewardCategory =
+  | 'care'
+  | 'romance'
+  | 'rest'
+  | 'fun'
+  | 'time'
+  | 'other'
+export type RewardOffer = {
+  id: string
+  request_id: string
+  space_id: string
+  creator_id: string
+  partner_id: string
+  title: string
+  description: string
+  kind: 'partner' | 'joint'
+  category: RewardCategory
+  emoji: string
+  price: number
+  single_use: boolean
+  status: 'pending' | 'active' | 'paused' | 'declined' | 'closed'
+  created_at: string
+}
+export type RewardConsent = {
+  offer_id: string
+  user_id: string
+  consent: 'pending' | 'accepted' | 'declined'
+  responded_at: string | null
+}
+export type RewardPurchase = {
+  id: string
+  request_id: string
+  offer_id: string
+  space_id: string
+  buyer_id: string
+  provider_id: string
+  title: string
+  description: string
+  emoji: string
+  kind: 'partner' | 'joint'
+  price: number
+  single_use: boolean
+  status: 'pending' | 'ready' | 'completed' | 'cancelled'
+  created_at: string
+  resolved_at: string | null
+}
+export type CoinTransaction = {
+  id: string
+  user_id: string
+  kind: 'earn' | 'spend' | 'refund'
+  amount: number
+  reward_ledger_id: string | null
+  purchase_id: string | null
+  created_at: string
+}
+export type CoinSummary = {
+  balance: number
+  earned: string
+  spent: string
+  refunded: string
+}
+export type PurchaseAction = 'ready' | 'refuse' | 'cancel' | 'confirm'
 type Table<Row, Insert, Update> = {
   Row: Row
   Insert: Insert
@@ -111,6 +173,10 @@ type Table<Row, Insert, Update> = {
 export type Database = {
   public: {
     Tables: {
+      reward_offers: Table<RewardOffer, never, never>
+      reward_offer_consents: Table<RewardConsent, never, never>
+      reward_purchases: Table<RewardPurchase, never, never>
+      coin_transactions: Table<CoinTransaction, never, never>
       profiles: Table<
         Profile,
         { id: string; display_name?: string; avatar_url?: string | null },
@@ -135,6 +201,37 @@ export type Database = {
     }
     Views: { [_ in never]: never }
     Functions: {
+      get_coin_summary: { Args: Record<string, never>; Returns: CoinSummary }
+      can_read_reward_offer: { Args: { p_offer_id: string }; Returns: boolean }
+      create_reward_offer: {
+        Args: {
+          p_request_id: string
+          p_title: string
+          p_description: string
+          p_kind: 'partner' | 'joint'
+          p_category: RewardCategory
+          p_emoji: string
+          p_price: number
+          p_single_use: boolean
+        }
+        Returns: string
+      }
+      respond_reward_offer: {
+        Args: { p_offer_id: string; p_accept: boolean }
+        Returns: undefined
+      }
+      set_reward_offer_published: {
+        Args: { p_offer_id: string; p_published: boolean }
+        Returns: undefined
+      }
+      buy_reward_offer: {
+        Args: { p_offer_id: string; p_request_id: string; p_expected_purchases: number }
+        Returns: string
+      }
+      act_reward_purchase: {
+        Args: { p_purchase_id: string; p_action: PurchaseAction }
+        Returns: undefined
+      }
       can_read_task: { Args: { p_task_id: string }; Returns: boolean }
       create_task: {
         Args: {

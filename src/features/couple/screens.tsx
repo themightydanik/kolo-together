@@ -84,6 +84,7 @@ export function CreateSpaceScreen() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['couple'] })
       await queryClient.invalidateQueries({ queryKey: ['task-workspace'] })
+      await queryClient.invalidateQueries({ queryKey: ['reward-store'] })
       navigate('/us', { replace: true })
     },
   })
@@ -259,6 +260,7 @@ export function AcceptInvitationScreen() {
       queryClient.removeQueries({ queryKey: ['invitation'] })
       await queryClient.invalidateQueries({ queryKey: ['couple'] })
       await queryClient.invalidateQueries({ queryKey: ['task-workspace'] })
+      await queryClient.invalidateQueries({ queryKey: ['reward-store'] })
       navigate(accept ? '/us' : '/', {
         replace: true,
         state: { invitationDeclined: !accept },
@@ -346,6 +348,7 @@ export function CoupleScreen() {
       await queryClient.invalidateQueries({ queryKey: ['couple'] })
       await queryClient.invalidateQueries({ queryKey: ['profile'] })
       await queryClient.invalidateQueries({ queryKey: ['task-workspace'] })
+      await queryClient.invalidateQueries({ queryKey: ['reward-store'] })
     },
   })
   return (
