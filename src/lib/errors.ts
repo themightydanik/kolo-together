@@ -26,6 +26,20 @@ export function errorMessage(error: unknown): string {
     /Failed to fetch|fetch failed|NetworkError|network|offline/i.test(message)
   )
     return 'Нет связи с сервером. Проверьте сеть и повторите попытку.'
+  const taskErrors: Record<string, string> = {
+    invalid_task: 'Проверьте поля задания.',
+    partner_required:
+      'Сначала подключите партнёра. Личные задания уже доступны.',
+    task_unavailable: 'Задание недоступно или уже закрыто. Обновите список.',
+    task_transition_denied: 'Этот переход больше недоступен. Обновите список.',
+    task_request_conflict:
+      'Данные этого запроса изменились. Создайте новое задание.',
+    task_has_completions:
+      'У текущего экземпляра уже есть выполнение. Его нельзя отменить.',
+    task_period_expired:
+      'Период завершился. Обновите список для текущего экземпляра.',
+  }
+  if (Object.hasOwn(taskErrors, message)) return taskErrors[message]
   if (message === 'recovery_required')
     return 'Откройте новую ссылку восстановления пароля.'
   if (message === 'already_in_space')

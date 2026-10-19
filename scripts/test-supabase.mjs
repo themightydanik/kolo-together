@@ -176,6 +176,17 @@ try {
     1,
     'Existing Auth profile backfill',
   )
+  const tasksExist = await db.query(
+    "select to_regclass('public.tasks') as name",
+  )
+  if (!tasksExist.rows[0].name)
+    await db.query(
+      await readFile(
+        'supabase/migrations/20261019170000_tasks_economy.sql',
+        'utf8',
+      ),
+    )
+  await db.query(await readFile('supabase/tests/task-privileges.sql', 'utf8'))
   await db.query(await readFile('supabase/tests/privileges.sql', 'utf8'))
   await db.query("notify pgrst,'reload schema'")
   console.log(
@@ -324,6 +335,143 @@ try {
   )
   assert.equal(bad.status, 'error')
   console.log('PASS: missing PKCE verifier and Auth error redirect fail closed')
+  step = 'task economy through real Auth and PostgREST'
+  const createTask = async (kind, difficulty = 'normal', recurrence = 'once') =>
+    check(
+      await a.rpc('create_task', {
+        p_request_id: randomUUID(),
+        p_title: 'Забота вместе',
+        p_description: 'Только локальный тест',
+        p_kind: kind,
+        p_category: 'care',
+        p_difficulty: difficulty,
+        p_due_date: null,
+        p_recurrence: recurrence,
+      }),
+      'Create task with no reward parameters',
+    )
+  const taskInstance = async (id) =>
+    check(
+      await a
+        .from('task_instances')
+        .select('*')
+        .eq('task_id', id)
+        .order('period_start', { ascending: false })
+        .limit(1)
+        .single(),
+      'Read instance',
+    )
+  const personal = await createTask('personal', 'easy')
+  const personalInstance = await taskInstance(personal)
+  const reward = check(
+    await a.rpc('complete_task_instance', {
+      p_instance_id: personalInstance.id,
+    }),
+    'Earn personal XP/Coins',
+  )
+  assert.equal(reward.xp, 10)
+  assert.equal(reward.coins, 5)
+  assert.equal(
+    check(
+      await a.rpc('complete_task_instance', {
+        p_instance_id: personalInstance.id,
+      }),
+      'Idempotent completion',
+    ).already_completed,
+    true,
+  )
+  const joint = await createTask('joint')
+  check(
+    await b.rpc('respond_task', { p_task_id: joint, p_accept: true }),
+    'Consent to joint task',
+  )
+  const ji = await taskInstance(joint)
+  const simultaneous = await Promise.all([
+    a.rpc('complete_task_instance', { p_instance_id: ji.id }),
+    b.rpc('complete_task_instance', { p_instance_id: ji.id }),
+  ])
+  simultaneous.forEach((result) => check(result, 'Concurrent joint completion'))
+  assert.equal(
+    check(
+      await a.from('space_progress').select('*').eq('space_id', space).single(),
+      'Read Together XP',
+    ).together_xp,
+    20,
+  )
+  assert.equal(
+    check(
+      await a
+        .from('reward_ledger')
+        .select('*')
+        .eq('instance_id', ji.id)
+        .eq('kind', 'together'),
+      'Single together grant',
+    ).length,
+    1,
+  )
+  const proposal = await createTask('proposal')
+  check(
+    await b.rpc('respond_task', { p_task_id: proposal, p_accept: false }),
+    'Decline without penalty',
+  )
+  const daily = await createTask('personal', 'normal', 'daily')
+  const dailyInstance = await taskInstance(daily)
+  check(
+    await a.rpc('complete_task_instance', { p_instance_id: dailyInstance.id }),
+    'Complete current daily instance',
+  )
+  await a.rpc('refresh_task_instances')
+  assert.equal(
+    check(
+      await a.from('task_instances').select('*').eq('task_id', daily),
+      'No duplicate daily instance',
+    ).length,
+    1,
+  )
+  assert.equal(
+    check(await c.from('tasks').select('*'), 'Task isolation through JWT')
+      .length,
+    0,
+  )
+  assert.equal(
+    check(
+      await b.from('tasks').select('*').eq('id', personal),
+      'Partner cannot read private task',
+    ).length,
+    0,
+  )
+  assert.ok(
+    (
+      await a
+        .from('user_progress')
+        .update({ coins: 999999 })
+        .eq('user_id', signup.user.id)
+    ).error,
+    'Direct coin tampering denied',
+  )
+  assert.ok(
+    (await a.from('reward_ledger').delete().eq('task_id', personal)).error,
+    'Immutable journal',
+  )
+  assert.ok(
+    (await a.rpc('materialize_task', { p_task_id: personal })).error,
+    'Internal task helper unavailable',
+  )
+  const xpBefore = check(
+    await a.from('user_progress').select('*').single(),
+    'Read earned points',
+  )
+  assert.equal(xpBefore.xp, 50)
+  assert.equal(xpBefore.coins, 25)
+  console.log(
+    'PASS: real task consent, personal/joint/daily grants, concurrent completion, Together XP, RLS and immutable balances/journal',
+  )
+  const pendingJoint = await createTask('joint')
+  check(
+    await b.rpc('respond_task', { p_task_id: pendingJoint, p_accept: true }),
+    'Accept task before departure',
+  )
+  const pendingInstance = await taskInstance(pendingJoint)
   step = 'equal partner exit through REST'
   check(await b.rpc('leave_couple_space'), 'Partner may leave independently')
   assert.equal(
@@ -333,7 +481,31 @@ try {
     ).length,
     0,
   )
-  console.log('PASS: independent departure removes API visibility')
+  assert.ok(
+    (
+      await a.rpc('complete_task_instance', {
+        p_instance_id: pendingInstance.id,
+      })
+    ).error,
+    'Departure closes unfinished shared task',
+  )
+  assert.equal(
+    check(
+      await b.from('user_progress').select('*').single(),
+      'Personal XP survives departure',
+    ).xp,
+    20,
+  )
+  assert.equal(
+    check(
+      await a.from('space_progress').select('*').eq('space_id', space).single(),
+      'Historic Together XP survives',
+    ).together_xp,
+    20,
+  )
+  console.log(
+    'PASS: independent departure removes API visibility, closes tasks and preserves earned progress',
+  )
 } catch (error) {
   console.error(`FAIL: ${step} (${error.code ?? error.name ?? 'error'})`)
   process.exitCode = 1

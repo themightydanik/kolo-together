@@ -83,6 +83,7 @@ export function CreateSpaceScreen() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['couple'] })
+      await queryClient.invalidateQueries({ queryKey: ['task-workspace'] })
       navigate('/us', { replace: true })
     },
   })
@@ -257,6 +258,7 @@ export function AcceptInvitationScreen() {
       clearInvitationToken()
       queryClient.removeQueries({ queryKey: ['invitation'] })
       await queryClient.invalidateQueries({ queryKey: ['couple'] })
+      await queryClient.invalidateQueries({ queryKey: ['task-workspace'] })
       navigate(accept ? '/us' : '/', {
         replace: true,
         state: { invitationDeclined: !accept },
@@ -343,6 +345,7 @@ export function CoupleScreen() {
       queryClient.removeQueries({ queryKey: ['invitation'] })
       await queryClient.invalidateQueries({ queryKey: ['couple'] })
       await queryClient.invalidateQueries({ queryKey: ['profile'] })
+      await queryClient.invalidateQueries({ queryKey: ['task-workspace'] })
     },
   })
   return (
@@ -351,8 +354,8 @@ export function CoupleScreen() {
       <Card>
         <h2 className="font-semibold">Два человека. Одна команда.</h2>
         <p className="my-3 text-sm text-muted-foreground">
-          Равные права, автоматическое подтверждение по умолчанию. Совместные
-          дела и награды появятся на следующих этапах.
+          Равные права. Своё выполнение каждый подтверждает самостоятельно. Нет
+          штрафов, обязательств и рейтинга партнёров.
         </p>
         <Button asChild variant="outline">
           <Link to="/profile">Мой профиль</Link>
@@ -363,7 +366,8 @@ export function CoupleScreen() {
               <>
                 <p className="mb-3 text-sm">
                   Вы потеряете доступ к этому пространству и профилю партнёра.
-                  Приглашения будут отменены. Продолжить?
+                  Приглашения и незавершённые общие дела будут закрыты.
+                  Заработанные XP и Coins сохранятся. Продолжить?
                 </p>
                 <div className="flex gap-2">
                   <Button
