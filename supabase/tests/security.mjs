@@ -47,7 +47,34 @@ before(async () => {
   for (const name of (await readdir('supabase/migrations'))
     .filter((name) => name.endsWith('.sql'))
     .sort()) {
+    if (name === '20261019220000_rewards_store.sql') {
+      await pool.query('insert into auth.users values($1,$2,$3)', [
+        uid(90),
+        'historical@example.test',
+        new Date(),
+      ])
+      await create(90)
+      const historical = await task(90)
+      await complete(90, (await instance(historical)).id)
+    }
     await pool.query(await readFile('supabase/migrations/' + name, 'utf8'))
+    if (name === '20261019220000_rewards_store.sql') {
+      assert.deepEqual(
+        await progress(90),
+        { xp: 20, coins: 10 },
+        'migration never credits historical earnings twice',
+      )
+      assert.equal(
+        (
+          await asUser(
+            90,
+            "select * from public.coin_transactions where kind='earn'",
+          )
+        ).length,
+        1,
+      )
+      await assertCoinAccounting(90)
+    }
   }
 })
 beforeEach(async () => {
@@ -1132,4 +1159,503 @@ test('cancel, departure and rejoining preserve historical consent and rewards wi
   assert.equal((await pool.query('select * from public.reward_ledger')).rowCount,1)
   assert.deepEqual(await progress(1),{xp:20,coins:10})
   assert.equal((await complete(1,old.id))[0].result.already_completed,true)
+})
+
+// Stage 4: real PostgreSQL, actual RLS/locks/transactions; no monetary mocks.
+const offer = async (n, options = {}) =>
+  (
+    await asUser(
+      n,
+      'select public.create_reward_offer($1,$2,$3,$4,$5,$6,$7,$8) as id',
+      [
+        options.request ?? randomUUID(),
+        options.title ?? 'Вечер вместе',
+        options.description ?? '',
+        options.kind ?? 'partner',
+        options.category ?? 'care',
+        options.emoji ?? '🎁',
+        options.price ?? 5,
+        options.single ?? false,
+      ],
+    )
+  )[0].id
+const buy = async (n, id, key = randomUUID()) =>
+  (await asUser(n, 'select public.buy_reward_offer($1,$2) as id', [id, key]))[0]
+    .id
+const consent = (n, id, accept = true) =>
+  asUser(n, 'select public.respond_reward_offer($1,$2)', [id, accept])
+const purchaseAction = (n, id, action) =>
+  asUser(n, 'select public.act_reward_purchase($1,$2)', [id, action])
+const publish = (n, id, published) =>
+  asUser(n, 'select public.set_reward_offer_published($1,$2)', [id, published])
+async function earn(n, count = 1) {
+  for (let j = 0; j < count; j++)
+    await complete(n, (await instance(await task(n))).id)
+}
+async function assertCoinAccounting(n) {
+  const {
+    rows: [r],
+  } = await pool.query(
+    `select coalesce(sum(case when kind='spend' then -amount else amount end),0)::integer as total from public.coin_transactions where user_id=$1`,
+    [uid(n)],
+  )
+  assert.equal((await progress(n)).coins, r.total)
+  const summary = (
+    await asUser(n, 'select public.get_coin_summary() as summary')
+  )[0].summary
+  assert.equal(summary.balance, r.total)
+  const sums = (
+    await pool.query(
+      'select kind,sum(amount)::text as amount from public.coin_transactions where user_id=$1 group by kind',
+      [uid(n)],
+    )
+  ).rows
+  for (const [key, kind] of [
+    ['earned', 'earn'],
+    ['spent', 'spend'],
+    ['refunded', 'refund'],
+  ])
+    assert.equal(
+      summary[key],
+      sums.find((row) => row.kind === kind)?.amount ?? '0',
+    )
+}
+
+test('store validates creation, records personal consent, publishes and keeps immutable snapshots', async () => {
+  await pair()
+  await earn(2)
+  for (const options of [
+    { price: 0 },
+    { price: 100001 },
+    { title: 'x' },
+    { description: 'a'.repeat(1001) },
+    { emoji: '<svg>' },
+    { category: 'unknown' },
+  ])
+    await assert.rejects(offer(1, options), /invalid_reward_offer/)
+  const key = randomUUID()
+  const id = await offer(1, { request: key })
+  assert.equal(await offer(1, { request: key }), id)
+  await assert.rejects(
+    offer(1, { request: key, price: 6 }),
+    /reward_request_conflict/,
+  )
+  assert.equal(
+    (
+      await asUser(
+        1,
+        'select * from public.reward_offer_consents where offer_id=$1',
+        [id],
+      )
+    )[0].consent,
+    'accepted',
+  )
+  await publish(1, id, false)
+  await assert.rejects(buy(2, id), /reward_unavailable/)
+  await assert.rejects(publish(2, id, true), /reward_transition_denied/)
+  await publish(1, id, true)
+  await assert.rejects(buy(1, id), /reward_unavailable/)
+  const p = await buy(2, id)
+  await publish(1, id, false)
+  // Maintenance-only change: no published-offer edit RPC exists.
+  await pool.query(
+    "update public.reward_offers set title='Изменено',price=99 where id=$1",
+    [id],
+  )
+  const purchase = (
+    await asUser(2, 'select * from public.reward_purchases where id=$1', [p])
+  )[0]
+  assert.equal(purchase.title, 'Вечер вместе')
+  assert.equal(purchase.price, 5)
+  await purchaseAction(2, p, 'cancel')
+  await assertCoinAccounting(2)
+})
+test('joint offers need the other partner consent; rejection has no cost and cannot be forged', async () => {
+  await pair()
+  await earn(1)
+  const id = await offer(1, { kind: 'joint' })
+  await assert.rejects(buy(1, id), /reward_unavailable/)
+  await assert.rejects(consent(1, id), /reward_transition_denied/)
+  await consent(2, id, false)
+  await consent(2, id, false)
+  await assert.rejects(consent(2, id, true), /reward_transition_denied/)
+  await assert.rejects(publish(1, id, true), /reward_transition_denied/)
+  assert.equal((await progress(1)).coins, 10)
+  const yes = await offer(1, { kind: 'joint' })
+  await consent(2, yes)
+  await consent(2, yes)
+  const p = await buy(1, yes)
+  assert.equal(
+    (
+      await asUser(
+        1,
+        'select provider_id from public.reward_purchases where id=$1',
+        [p],
+      )
+    )[0].provider_id,
+    uid(2),
+  )
+  assert.equal((await progress(2)).coins, 0)
+  await assertCoinAccounting(1)
+})
+test('purchase enforces own balance, insufficient funds and exact request idempotence', async () => {
+  await pair()
+  const id = await offer(1, { price: 7 })
+  await assert.rejects(buy(2, id), /insufficient_coins/)
+  assert.equal(
+    (await pool.query('select * from public.reward_purchases')).rowCount,
+    0,
+  )
+  await earn(2)
+  const key = randomUUID()
+  const ids = await Promise.all([
+    buy(2, id, key),
+    buy(2, id, key),
+    buy(2, id, key),
+  ])
+  assert.equal(new Set(ids).size, 1)
+  assert.equal((await progress(2)).coins, 3)
+  const other = await offer(1)
+  await assert.rejects(buy(2, other, key), /reward_request_conflict/)
+  await assert.rejects(
+    asUser(2, 'select public.buy_reward_offer($1,$2,$3)', [
+      id,
+      randomUUID(),
+      uid(1),
+    ]),
+    /does not exist/,
+  )
+  await assertCoinAccounting(2)
+})
+test('two different simultaneous purchases cannot overspend; earning and spending serialize', async () => {
+  await pair()
+  await earn(2)
+  const id = await offer(1, { price: 7 })
+  const results = await Promise.allSettled([buy(2, id), buy(2, id)])
+  assert.equal(results.filter((x) => x.status === 'fulfilled').length, 1)
+  assert.equal((await progress(2)).coins, 3)
+  const ti = await instance(await task(2))
+  const race = await Promise.allSettled([complete(2, ti.id), buy(2, id)])
+  assert.equal(race[0].status, 'fulfilled')
+  assert.equal(
+    (await progress(2)).coins,
+    race[1].status === 'fulfilled' ? 6 : 13,
+  )
+  await assertCoinAccounting(2)
+})
+test('single-use offers sell once even in parallel or after refund; repeatable offers sell again', async () => {
+  await pair()
+  await earn(1, 2)
+  await earn(2, 2)
+  const id = await offer(1, { kind: 'joint', single: true })
+  await consent(2, id)
+  const race = await Promise.allSettled([buy(1, id), buy(2, id)])
+  assert.equal(race.filter((x) => x.status === 'fulfilled').length, 1)
+  const winner = race[0].status === 'fulfilled' ? 1 : 2
+  const purchase = race[winner - 1].value
+  await purchaseAction(winner, purchase, 'cancel')
+  await assert.rejects(buy(1, id), /reward_sold_out/)
+  const repeat = await offer(1)
+  assert.notEqual(await buy(2, repeat), await buy(2, repeat))
+  await assertCoinAccounting(1)
+  await assertCoinAccounting(2)
+})
+test('provider refusal and buyer cancellation refund exactly once and cannot confirm for buyer', async () => {
+  await pair()
+  await earn(2, 2)
+  const id = await offer(1)
+  const p = await buy(2, id)
+  await assert.rejects(
+    purchaseAction(1, p, 'confirm'),
+    /reward_transition_denied/,
+  )
+  await assert.rejects(
+    purchaseAction(2, p, 'ready'),
+    /reward_transition_denied/,
+  )
+  await purchaseAction(1, p, 'ready')
+  assert.equal(
+    (
+      await asUser(
+        1,
+        'select status from public.reward_purchases where id=$1',
+        [p],
+      )
+    )[0].status,
+    'ready',
+  )
+  await Promise.all([
+    purchaseAction(1, p, 'refuse'),
+    purchaseAction(2, p, 'cancel'),
+    purchaseAction(1, p, 'refuse'),
+  ])
+  assert.equal((await progress(2)).coins, 20)
+  const q = await buy(2, id)
+  await purchaseAction(2, q, 'cancel')
+  await purchaseAction(2, q, 'cancel')
+  assert.equal((await progress(2)).coins, 20)
+  assert.equal(
+    (
+      await pool.query(
+        "select * from public.coin_transactions where kind='refund'",
+      )
+    ).rowCount,
+    2,
+  )
+  await assertCoinAccounting(2)
+})
+test('only buyer confirms actual receipt after provider readiness; completed purchases cannot refund', async () => {
+  await pair()
+  await earn(2)
+  const p = await buy(2, await offer(1))
+  await assert.rejects(
+    purchaseAction(2, p, 'confirm'),
+    /reward_transition_denied/,
+  )
+  await purchaseAction(1, p, 'ready')
+  await purchaseAction(2, p, 'confirm')
+  await purchaseAction(2, p, 'confirm')
+  await assert.rejects(
+    purchaseAction(2, p, 'cancel'),
+    /reward_transition_denied/,
+  )
+  await assert.rejects(
+    purchaseAction(1, p, 'refuse'),
+    /reward_transition_denied/,
+  )
+  assert.equal((await progress(2)).coins, 5)
+  assert.equal((await progress(2)).xp, 20)
+  await assertCoinAccounting(2)
+})
+test('unpublish/buy and confirm/cancel races have one consistent outcome', async () => {
+  await pair()
+  await earn(2)
+  const id = await offer(1)
+  const race = await Promise.allSettled([publish(1, id, false), buy(2, id)])
+  if (race[1].status === 'fulfilled') {
+    const p = race[1].value
+    await purchaseAction(1, p, 'ready')
+    const finish = await Promise.allSettled([
+      purchaseAction(2, p, 'confirm'),
+      purchaseAction(2, p, 'cancel'),
+    ])
+    assert.equal(finish.filter((x) => x.status === 'fulfilled').length, 1)
+  } else assert.match(race[1].reason.message, /reward_unavailable/)
+  await assert.rejects(buy(2, id), /reward_unavailable/)
+  await assertCoinAccounting(2)
+})
+test('departure refunds pending/ready purchases, preserves completed history and prevents reactivation', async () => {
+  await pair()
+  await earn(1)
+  await earn(2, 3)
+  const id = await offer(1)
+  const pending = await buy(2, id),
+    ready = await buy(2, id),
+    done = await buy(2, id)
+  await purchaseAction(1, ready, 'ready')
+  await purchaseAction(1, done, 'ready')
+  await purchaseAction(2, done, 'confirm')
+  const joint = await offer(1, { kind: 'joint' })
+  await consent(2, joint)
+  const own = await buy(1, joint)
+  const exitRace = await Promise.allSettled([
+    asUser(1, 'select public.leave_couple_space()'),
+    purchaseAction(2, pending, 'cancel'),
+  ])
+  assert.equal(exitRace[0].status, 'fulfilled')
+  const rows = (
+    await pool.query('select id,status from public.reward_purchases')
+  ).rows
+  for (const p of [pending, ready, own])
+    assert.equal(rows.find((x) => x.id === p).status, 'cancelled')
+  assert.equal(rows.find((x) => x.id === done).status, 'completed')
+  assert.equal((await progress(2)).coins, 25)
+  assert.equal((await progress(1)).coins, 10)
+  assert.equal(
+    (await asUser(1, 'select * from public.reward_purchases')).length,
+    0,
+  )
+  assert.equal(
+    (await asUser(1, 'select * from public.reward_offers')).length,
+    0,
+  )
+  await resolve(1, await invite(2, 1))
+  await assert.rejects(publish(1, id, true), /reward_transition_denied/)
+  await assert.rejects(buy(2, id), /reward_unavailable/)
+  await assertCoinAccounting(1)
+  await assertCoinAccounting(2)
+})
+test('purchases racing departure cannot escape a single refund and new partners cannot read history', async () => {
+  await pair()
+  await earn(2)
+  const id = await offer(1)
+  const race = await Promise.allSettled([
+    buy(2, id),
+    asUser(1, 'select public.leave_couple_space()'),
+  ])
+  assert.equal(race[1].status, 'fulfilled')
+  if (race[0].status === 'fulfilled')
+    assert.equal(
+      (
+        await pool.query(
+          'select status from public.reward_purchases where id=$1',
+          [race[0].value],
+        )
+      ).rows[0].status,
+      'cancelled',
+    )
+  assert.equal((await progress(2)).coins, 10)
+  await resolve(3, await invite(2, 3))
+  for (const table of [
+    'reward_offers',
+    'reward_offer_consents',
+    'reward_purchases',
+    'coin_transactions',
+  ])
+    assert.equal((await asUser(3, `select * from public.${table}`)).length, 0)
+  await assertCoinAccounting(2)
+})
+test('RLS isolates pairs and own coin history; direct writes and internal RPC are denied', async () => {
+  await pair()
+  await create(3)
+  await earn(2)
+  const id = await offer(1)
+  await buy(2, id)
+  for (const table of [
+    'reward_offers',
+    'reward_offer_consents',
+    'reward_purchases',
+    'coin_transactions',
+  ]) {
+    assert.equal((await asUser(3, `select * from public.${table}`)).length, 0)
+    await assert.rejects(
+      asUser(2, `delete from public.${table}`),
+      (e) => e.code === '42501',
+    )
+    await assert.rejects(
+      asUser(null, `select * from public.${table}`),
+      (e) => e.code === '42501',
+    )
+  }
+  assert.equal(
+    (await asUser(1, 'select * from public.coin_transactions')).length,
+    0,
+  )
+  await assert.rejects(buy(3, id), /reward_unavailable/)
+  await assert.rejects(
+    asUser(2, 'update public.user_progress set coins=9999'),
+    (e) => e.code === '42501',
+  )
+  await assert.rejects(
+    asUser(2, "update public.reward_offer_consents set consent='accepted'"),
+    (e) => e.code === '42501',
+  )
+  for (const n of [null, 1, 2])
+    await assert.rejects(
+      asUser(n, 'select public.refund_reward_purchase(null)'),
+      (e) => e.code === '42501',
+    )
+  await pool.query(
+    await readFile('supabase/tests/store-privileges.sql', 'utf8'),
+  )
+})
+test('commit-time purchase/refund failures roll back balance, journal and purchase status together', async () => {
+  await pair()
+  await earn(2)
+  const id = await offer(1)
+  await pool.query(
+    `create function public.review_fail_coin() returns trigger language plpgsql as $$ begin raise exception 'review_failure'; end $$`,
+  )
+  try {
+    await pool.query(
+      "create constraint trigger review_fail after update on public.user_progress deferrable initially deferred for each row execute function public.review_fail_coin()",
+    )
+    await assert.rejects(buy(2, id), /review_failure/)
+    assert.equal(
+      (await pool.query('select * from public.reward_purchases')).rowCount,
+      0,
+    )
+    assert.equal((await progress(2)).coins, 10)
+    await pool.query('drop trigger review_fail on public.user_progress')
+    const p = await buy(2, id)
+    await pool.query(
+      "create constraint trigger review_fail after update on public.user_progress deferrable initially deferred for each row execute function public.review_fail_coin()",
+    )
+    await assert.rejects(purchaseAction(2, p, 'cancel'), /review_failure/)
+    assert.equal(
+      (
+        await pool.query(
+          'select status from public.reward_purchases where id=$1',
+          [p],
+        )
+      ).rows[0].status,
+      'pending',
+    )
+    assert.equal((await progress(2)).coins, 5)
+    await pool.query('drop trigger review_fail on public.user_progress')
+    await purchaseAction(2, p, 'cancel')
+    await assertCoinAccounting(2)
+  } finally {
+    await pool.query(
+      'drop trigger if exists review_fail on public.user_progress',
+    )
+    await pool.query('drop function public.review_fail_coin()')
+  }
+})
+test('earn/spend/refund leave XP and Together XP unchanged and reserve safe refund capacity', async () => {
+  const space = await pair()
+  const ti = await task(1, { kind: 'joint' })
+  await respond(2, ti)
+  const i = await instance(ti)
+  await complete(1, i.id)
+  await complete(2, i.id)
+  const p = await buy(2, await offer(1))
+  await assert.rejects(
+    pool.query(
+      'update public.user_progress set coins=9007199254740991 where user_id=$1',
+      [uid(2)],
+    ),
+    /coin_capacity_exceeded/,
+  )
+  await purchaseAction(1, p, 'refuse')
+  assert.deepEqual(await progress(1), { xp: 20, coins: 10 })
+  assert.deepEqual(await progress(2), { xp: 20, coins: 10 })
+  assert.equal(
+    (
+      await pool.query(
+        'select together_xp::integer as xp from public.space_progress where space_id=$1',
+        [space],
+      )
+    ).rows[0].xp,
+    20,
+  )
+  await assertCoinAccounting(1)
+  await assertCoinAccounting(2)
+})
+
+test('historical backfill refuses inconsistent balances without repairing or deleting data', async () => {
+  await create(1)
+  await earn(1)
+  const source = await readFile(
+    'supabase/migrations/20261019220000_rewards_store.sql',
+    'utf8',
+  )
+  const start = source.indexOf('do $$ begin')
+  const end = source.indexOf('end $$;', start) + 'end $$;'.length
+  const guard = source.slice(start, end)
+  await pool.query(guard)
+  await pool.query(
+    'update public.user_progress set coins=11 where user_id=$1',
+    [uid(1)],
+  )
+  await assert.rejects(pool.query(guard), /coin_history_mismatch/)
+  assert.equal((await progress(1)).coins, 11)
+  assert.equal(
+    (await pool.query('select * from public.reward_ledger')).rowCount,
+    1,
+  )
+  assert.equal(
+    (await pool.query('select * from public.coin_transactions')).rowCount,
+    1,
+  )
 })

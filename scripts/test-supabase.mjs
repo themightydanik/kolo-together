@@ -455,14 +455,20 @@ try {
   ]) {
     assert.equal(
       check(
-        await sdk.from('task_completions').select('*').eq('instance_id', instanceId),
+        await sdk
+          .from('task_completions')
+          .select('*')
+          .eq('instance_id', instanceId),
         'Explicit completion privacy through real JWT/RLS',
       ).length,
       expected,
     )
   }
   for (const sdk of [a, anon])
-    assert.ok((await sdk.rpc('task_clock')).error, 'Internal clock is not a client RPC')
+    assert.ok(
+      (await sdk.rpc('task_clock')).error,
+      'Internal clock is not a client RPC',
+    )
   assert.ok(
     (
       await a
@@ -488,6 +494,163 @@ try {
   assert.equal(xpBefore.coins, 25)
   console.log(
     'PASS: real task consent, personal/joint/daily grants, concurrent completion, Together XP, RLS and immutable balances/journal',
+  )
+  step =
+    'store migration backfills real existing earnings without changing balances'
+  const storeExists = await db.query(
+    "select to_regclass('public.reward_offers') as name",
+  )
+  if (!storeExists.rows[0].name)
+    await db.query(
+      await readFile(
+        'supabase/migrations/20261019220000_rewards_store.sql',
+        'utf8',
+      ),
+    )
+  await db.query(await readFile('supabase/tests/store-privileges.sql', 'utf8'))
+  await db.query("notify pgrst,'reload schema'")
+  let initialSummary
+  for (let attempt = 0; attempt < 100; attempt++) {
+    initialSummary = await a.rpc('get_coin_summary')
+    if (!initialSummary.error) break
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  assert.deepEqual(check(initialSummary, 'Historical earning mirror'), {
+    balance: 25,
+    earned: '25',
+    spent: '0',
+    refunded: '0',
+  })
+  const createOffer = async (kind = 'partner') =>
+    check(
+      await a.rpc('create_reward_offer', {
+        p_request_id: randomUUID(),
+        p_title: 'Вечер без спешки',
+        p_description: 'Добровольный ритуал',
+        p_kind: kind,
+        p_category: 'time',
+        p_emoji: '🎁',
+        p_price: 5,
+        p_single_use: false,
+      }),
+      'Create real offer',
+    )
+  const storeOffer = await createOffer()
+  const request = randomUUID()
+  const bought = check(
+    await b.rpc('buy_reward_offer', {
+      p_offer_id: storeOffer,
+      p_request_id: request,
+    }),
+    'Buy with own Coins',
+  )
+  assert.equal(
+    check(
+      await b.rpc('buy_reward_offer', {
+        p_offer_id: storeOffer,
+        p_request_id: request,
+      }),
+      'Retry real purchase',
+    ),
+    bought,
+  )
+  assert.equal(
+    check(await b.rpc('get_coin_summary'), 'Balance after purchase').balance,
+    5,
+  )
+  assert.ok(
+    (
+      await a.rpc('act_reward_purchase', {
+        p_purchase_id: bought,
+        p_action: 'confirm',
+      })
+    ).error,
+    'Provider cannot confirm for buyer',
+  )
+  check(
+    await a.rpc('act_reward_purchase', {
+      p_purchase_id: bought,
+      p_action: 'refuse',
+    }),
+    'Refuse and refund',
+  )
+  check(
+    await b.rpc('act_reward_purchase', {
+      p_purchase_id: bought,
+      p_action: 'cancel',
+    }),
+    'No double refund',
+  )
+  assert.equal(
+    check(await b.rpc('get_coin_summary'), 'Refunded balance').balance,
+    10,
+  )
+  const finished = check(
+    await b.rpc('buy_reward_offer', {
+      p_offer_id: storeOffer,
+      p_request_id: randomUUID(),
+    }),
+    'Buy second reward',
+  )
+  check(
+    await a.rpc('act_reward_purchase', {
+      p_purchase_id: finished,
+      p_action: 'ready',
+    }),
+    'Provider readiness',
+  )
+  check(
+    await b.rpc('act_reward_purchase', {
+      p_purchase_id: finished,
+      p_action: 'confirm',
+    }),
+    'Buyer confirms receipt',
+  )
+  const jointOffer = await createOffer('joint')
+  assert.ok(
+    (
+      await a.rpc('buy_reward_offer', {
+        p_offer_id: jointOffer,
+        p_request_id: randomUUID(),
+      })
+    ).error,
+    'Joint requires other consent',
+  )
+  check(
+    await b.rpc('respond_reward_offer', {
+      p_offer_id: jointOffer,
+      p_accept: true,
+    }),
+    'Joint offer consent',
+  )
+  const departurePurchase = check(
+    await a.rpc('buy_reward_offer', {
+      p_offer_id: jointOffer,
+      p_request_id: randomUUID(),
+    }),
+    'Pending purchase before exit',
+  )
+  for (const table of [
+    'reward_offers',
+    'reward_offer_consents',
+    'reward_purchases',
+    'coin_transactions',
+  ])
+    assert.equal(
+      check(await c.from(table).select('*'), 'Store JWT isolation').length,
+      0,
+    )
+  assert.ok(
+    (await b.from('coin_transactions').delete().eq('purchase_id', bought))
+      .error,
+    'Immutable coin journal',
+  )
+  assert.ok(
+    (await b.rpc('refund_reward_purchase', { p_purchase_id: bought })).error,
+    'Internal refund is denied',
+  )
+  console.log(
+    'PASS: historical Coins backfill, real store JWT/RLS/RPC, consent, exact debit/refund, buyer receipt and journal grants',
   )
   const pendingJoint = await createTask('joint')
   check(
@@ -525,6 +688,35 @@ try {
       'Historic Together XP survives',
     ).together_xp,
     20,
+  )
+  assert.equal(
+    check(
+      await a
+        .from('reward_purchases')
+        .select('*')
+        .eq('id', departurePurchase)
+        .single(),
+      'Auto refund status',
+    ).status,
+    'cancelled',
+  )
+  assert.deepEqual(
+    check(await a.rpc('get_coin_summary'), 'Departure refund accounting'),
+    { balance: 25, earned: '25', spent: '5', refunded: '5' },
+  )
+  assert.equal(
+    check(
+      await b.from('reward_purchases').select('*'),
+      'Former purchase visibility',
+    ).length,
+    0,
+  )
+  assert.equal(
+    check(await b.rpc('get_coin_summary'), 'Departed own accounting').balance,
+    5,
+  )
+  console.log(
+    'PASS: departure cancels pending purchases with exact refund, keeps completed spends and hides partner history',
   )
   console.log(
     'PASS: independent departure removes API visibility, closes tasks and preserves earned progress',
