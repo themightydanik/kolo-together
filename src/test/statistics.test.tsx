@@ -39,6 +39,7 @@ function snapshot(): Statistics {
       tasks: 1,
       goals: 1,
       achievements: 3,
+      opening_together_xp: 0,
       xp_series_complete: true,
     },
     streak: { current: 1, best: 1 },
@@ -140,6 +141,7 @@ test('new partner cannot get a fabricated timeline graph from historical aggrega
 test('server pagination passes exact cursor and never requests all historical rows', async () => {
   const cursor = {
     session: 'opaque',
+    badges: [],
     at: '2026-10-20T10:00:00Z',
     key: 'task:one',
   }
@@ -291,4 +293,69 @@ test('demo labels examples without a simulated balance or unlock', () => {
   expect(screen.getByText(/Демонстрационный пример/)).toBeInTheDocument()
   expect(screen.queryByText('Открыто')).not.toBeInTheDocument()
   expect(auth.client.rpc).not.toHaveBeenCalled()
+})
+test('XP chart labels the pre-window balance and preserves it on days without new grants', () => {
+  const data = snapshot()
+  data.shared.opening_together_xp = 20
+  data.shared.together_xp = 90
+  data.calendar = data.calendar.map((d) => ({
+    ...d,
+    cumulative_xp: d.cumulative_xp + 20,
+  }))
+  mount(<StatisticsCards data={data} />)
+  expect(
+    screen.getByText(/До начала периода: 20 Together XP/),
+  ).toBeInTheDocument()
+  expect(screen.getByTitle('2026-10-01 UTC: 20 Together XP')).toHaveStyle({
+    height: `${(20 / 90) * 100}%`,
+  })
+})
+test('retained page hides old object names when server rejects the cursor', async () => {
+  let more = false
+  auth.client.rpc.mockImplementation((fn: string) =>
+    Promise.resolve(
+      fn === 'get_statistics'
+        ? { data: snapshot(), error: null }
+        : fn === 'get_joint_history'
+          ? more
+            ? { data: null, error: { message: 'invalid_statistics_cursor' } }
+            : {
+                data: {
+                  context: 'a:b',
+                  items: [
+                    {
+                      at: '2026-10-20T10:00:00Z',
+                      key: 'task:old',
+                      kind: 'task',
+                      object_id: 'old',
+                      title: 'История прежнего состава',
+                    },
+                  ],
+                  next_cursor: {
+                    session: 'old',
+                    at: '2026-10-20T10:00:00Z',
+                    key: 'task:old',
+                    badges: [],
+                  },
+                },
+                error: null,
+              }
+          : { data: [], error: null },
+    ),
+  )
+  mount(<StatisticsSection context="a:b" />)
+  expect(
+    await screen.findByText('История прежнего состава'),
+  ).toBeInTheDocument()
+  more = true
+  fireEvent.click(screen.getByRole('button', { name: 'Ещё 20 событий' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Состав пары или история изменились',
+  )
+  expect(screen.queryByText('История прежнего состава')).not.toBeInTheDocument()
+})
+test('server membership epoch mismatch never renders stale titles under a new client key', async () => {
+  mount(<StatisticsSection context="a:c" />)
+  expect(await screen.findByRole('alert')).toBeInTheDocument()
+  expect(screen.queryByText('Наш совместный путь')).not.toBeInTheDocument()
 })

@@ -36,6 +36,7 @@ export type Statistics = {
     tasks: number
     goals: number
     achievements: number
+    opening_together_xp: number
     xp_series_complete: boolean
   }
   streak: { current: number; best: number }
@@ -48,7 +49,12 @@ export type Statistics = {
   }[]
   badges: Badge[]
 }
-export type HistoryCursor = { session: string; at: string; key: string }
+export type HistoryCursor = {
+  badges: string[]
+  session: string
+  at: string
+  key: string
+}
 export type HistoryItem = {
   at: string
   key: string

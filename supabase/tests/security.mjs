@@ -2783,7 +2783,7 @@ test('statistics growing history uses indexed bounded source pages and an aggreg
     `3000 joint instances / 9000 ledger rows: source page ${plan['Execution Time']} ms; full snapshot ${duration.toFixed(1)} ms`,
   )
 })
-test('history cursor freezes transaction visibility: late backdated commit cannot duplicate a threshold event', async () => {
+test('live keyset excludes already seen achievement codes after a late backdated COMMIT', async () => {
   await pair()
   const pending = await task(1, { kind: 'joint' })
   await respond(2, pending)
@@ -2810,8 +2810,8 @@ test('history cursor freezes transaction visibility: late backdated commit canno
       all.push(...p.items)
       cursor = p.next_cursor
     }
-    assert.equal(all.length, 7)
-    assert.equal(new Set(all.map((x) => x.key)).size, 7)
+    assert.equal(all.length, 8)
+    assert.equal(new Set(all.map((x) => x.key)).size, 8)
     assert.equal((await history(1, null, 50)).items.length, 8)
   } finally {
     await late.query('rollback')
@@ -2829,6 +2829,7 @@ test('history sessions are private, bounded, expiring and membership acknowledge
   const first = await history(1, null, 1)
   assert.deepEqual(Object.keys(first.next_cursor).sort(), [
     'at',
+    'badges',
     'key',
     'session',
   ])
@@ -2857,5 +2858,121 @@ test('history sessions are private, bounded, expiring and membership acknowledge
       )
     ).rows[0].n,
     10,
+  )
+})
+
+test('review: live keyset survives non-ordering UPDATE and VACUUM FREEZE without xmin dependencies', async () => {
+  await pair()
+  for (let i = 0; i < 3; i++) await jointFact()
+  const first = await history(1, null, 1)
+  // Disposable owner maintenance only, not an operation available to a browser.
+  await pool.query(
+    "update public.reward_ledger set title=title where kind='together'",
+  )
+  await pool.query('vacuum (freeze,analyze) public.reward_ledger')
+  const all = [...first.items]
+  let cursor = first.next_cursor
+  while (cursor) {
+    const p = await history(1, cursor, 1)
+    all.push(...p.items)
+    cursor = p.next_cursor
+  }
+  assert.equal(
+    all.length,
+    4,
+    'three task facts plus first joint achievement remain readable',
+  )
+  assert.equal(new Set(all.map((x) => x.key)).size, 4)
+})
+test('review: thirty-day cumulative XP includes all permitted facts before the window and hides drift', async () => {
+  await pair()
+  const old = await jointFact()
+  await jointFact()
+  await pool.query(
+    "update public.reward_ledger set created_at=now()-interval '45 days' where kind='together' and task_id=$1",
+    [old],
+  )
+  const data = await statistics(1)
+  assert.equal(data.shared.xp_series_complete, true)
+  assert.equal(data.calendar[0].cumulative_xp, 20)
+  assert.equal(data.calendar.at(-1).cumulative_xp, 40)
+  await pool.query('update public.space_progress set together_xp=together_xp+7')
+  assert.equal((await statistics(1)).shared.xp_series_complete, false)
+})
+test('review: live keyset documents late commits above the boundary as refresh-only, not strict snapshot', async () => {
+  await pair()
+  const pending = await task(1, { kind: 'joint' })
+  await respond(2, pending)
+  const i = await instance(pending)
+  await complete(1, i.id)
+  for (let n = 0; n < 5; n++) await jointFact()
+  const late = await pool.connect()
+  try {
+    await late.query('begin')
+    await late.query('set local role authenticated')
+    await late.query("select set_config('request.jwt.claim.sub',$1,true)", [
+      uid(2),
+    ])
+    const first = await history(1, null, 2)
+    await late.query('select public.complete_task_instance($1)', [i.id])
+    await late.query('commit')
+    const all = [...first.items]
+    let cursor = first.next_cursor
+    while (cursor) {
+      const p = await history(1, cursor, 2)
+      all.push(...p.items)
+      cursor = p.next_cursor
+    }
+    assert.equal(all.length, 7)
+    assert.equal(new Set(all.map((x) => x.key)).size, 7)
+    assert.equal((await history(1, null, 50)).items.length, 8)
+    assert.equal(
+      (
+        await pool.query(
+          "select to_regprocedure('public.statistics_visible(xid,pg_snapshot)') as fn",
+        )
+      ).rows[0].fn,
+      null,
+    )
+  } finally {
+    await late.query('rollback')
+    late.release()
+  }
+})
+test('review: protected totals, raw facts, cursor filters and acknowledgement rollback preserve economy', async () => {
+  await pair()
+  await acknowledge(1)
+  await earn(1)
+  const before = await progress(1)
+  await pool.query(`create function public.review_fail_seen() returns trigger language plpgsql as $$begin raise exception 'review_seen_commit_failure'; end$$;
+ create constraint trigger review_fail_seen after insert or update on public.statistics_seen deferrable initially deferred for each row execute function public.review_fail_seen()`)
+  try {
+    await assert.rejects(acknowledge(1), /review_seen_commit_failure/)
+    assert.deepEqual(await progress(1), before)
+  } finally {
+    await pool.query(
+      'drop trigger review_fail_seen on public.statistics_seen; drop function public.review_fail_seen()',
+    )
+  }
+  assert.deepEqual(await acknowledge(1), ['personal_1'])
+  assert.deepEqual(await acknowledge(1), [])
+  for (let n = 0; n < 5; n++) await jointFact()
+  const p = await history(1, null, 1)
+  for (const badges of [['personal_1'], ['joint_1', 'joint_1'], [{}], null])
+    await assert.rejects(
+      history(1, { ...p.next_cursor, badges }),
+      /invalid_statistics_cursor/,
+    )
+  const fake = await history(1, { ...p.next_cursor, badges: [] }, 50)
+  assert.ok(fake.items.every((x) => x.kind !== 'reward'))
+  for (const sql of [
+    'select * from public.statistics_joint_facts',
+    'update public.space_progress set together_xp=999',
+    'update public.user_progress set coins=999',
+    'delete from public.goal_reward_ledger',
+  ])
+    await assert.rejects(asUser(1, sql), /permission denied/)
+  await pool.query(
+    await readFile('supabase/tests/statistics-privileges.sql', 'utf8'),
   )
 })

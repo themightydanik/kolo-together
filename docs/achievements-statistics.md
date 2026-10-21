@@ -63,9 +63,9 @@ Together XP и его три памятных порога принадлежа�
 
 - `statistics_joint_facts`: внутренний `security_invoker=true` view, без клиентских grants; явно проверяет caller и обоих действующих участников. Нормализует три независимых источника, не создавая бизнес-фактов.
 - `get_statistics()` — verified caller, STABLE SECURITY DEFINER, фиксированный пустой search_path, bounded JSON (13 badges + 30 дней + агрегаты). Нельзя передать user_id, XP, счётчик или фильтр.
-- `get_joint_history(jsonb,integer)` — verified caller, SECURITY DEFINER, только фиксированные источники и keyset; первая страница сохраняет технический snapshot session, последующие читают его. Не изменяет игру.
+- `get_joint_history(jsonb,integer)` — verified caller, SECURITY DEFINER, только фиксированные источники и keyset; первая страница сохраняет технический keyset session, последующие читают его. Не изменяет игру.
 - `acknowledge_statistics()` — verified caller, SECURITY DEFINER, сервер сам вычисляет unlocked codes, сериализует запись own seen state под user → space lock. Не принимает клиентские codes/counters.
-- Внутренние invoker helpers `statistics_context`, `statistics_badges`, `statistics_visible` не имеют EXECUTE для PUBLIC/anon/authenticated.
+- Внутренние invoker helpers `statistics_context`, `statistics_badges` не имеют EXECUTE для PUBLIC/anon/authenticated.
 - `statistics_seen`: RLS, authenticated только SELECT своей строки, запись только RPC.
 - `statistics_history_sessions`: RLS без клиентских policies/grants, включая SELECT. Хранит снимок, actor и membership epoch только на сервере.
 
@@ -75,11 +75,13 @@ Read-only проверка grants: `supabase/tests/statistics-privileges.sql`. �
 
 Feed сортируется `(at DESC,key DESC)`, key включает тип и уникальный UUID либо badge code. Клиент получает 20 событий, сервер разрешает limit 1–50, каждый source берёт максимум limit+1 кандидатов, achievement source — первые 25 joint/10 goal фактов. Offset и загрузки всей истории ради первой страницы нет.
 
-Курсор `{session,at,key}` — непривилегированный указатель, не bearer token. Сервер сверяет owner, текущие membership UUID, срок и форму. Смена состава, даже выход/возвращение того же человека, инвалидирует прежний cursor. Ошибка предлагает начать историю заново. Внутренний `pg_snapshot` первой страницы не передаётся браузеру. Проверка xmin/видимости исключает поздние COMMIT с более ранним transaction timestamp: они не сдвигают пороговые даты и не дублируют achievement event в текущей прокрутке. Обновление с начала покажет новые факты.
+Это **live keyset**, не строгий snapshot. Первая страница фиксирует только верхнюю временную границу. Поздно зафиксированный факт со старой датой может попасть на последующую страницу ниже текущей границы; факт выше уже пройденной границы виден после «Обновить с начала». Нельзя обещать неизменный набор/полный MVCC snapshot между HTTP. Малый список уже показанных shared badge codes (максимум 7) в курсоре подавляет повтор, если поздний COMMIT сдвинул вычисленную дату порога. Он только исключает элементы пагинации, не является доверенным источником достижений.
 
-Сессия живёт 30 минут, максимум 10 на пользователя; новая первая страница под advisory lock удаляет его просроченные/лишние сессии. Нет cron или глобального удаления. У неактивного пользователя может остаться до 10 просроченных технических строк до следующего просмотра/административной retention. Это не сохранённый PostgreSQL snapshot, не держит транзакцию/соединение и не мешает vacuum.
+Курсор `{session,at,key,badges}` — непривилегированный указатель, не bearer token. Сервер сверяет owner, текущие membership UUID, срок, форму и ограниченный набор codes. Смена состава, даже выход/возвращение того же человека, инвалидирует прежний cursor. Ошибка скрывает прежние карточки в текущем feed и предлагает начать заново; несовпадение серверного/client epoch также не отображает данные. Уже загруженные ранее разрешённые данные в offline-вкладке нельзя удалённо отозвать; сервер не выдаёт по старому курсору новые данные, а новый аккаунт имеет отдельный cache.
 
-Курсоры рассчитаны на обычные неизменяемые business facts; superuser/административное переписывание или удаление фактов не поддерживает стабильную прокрутку. Клиент не может этого сделать. Нет realtime общей snapshot-транзакции между сводкой и feed: сводка может быть новее просматриваемой истории. Даты порогов вычисляемы, при refresh могут учесть ранее не зафиксированный факт.
+Сессия живёт 30 минут, максимум 10 на пользователя; новая первая страница под advisory lock удаляет его просроченные/лишние сессии. Нет cron или глобального удаления. У неактивного пользователя может остаться до 10 просроченных технических строк до следующего просмотра/retention. Транзакция и соединение между страницами не удерживаются. Таблица не содержит snapshot/transaction IDs или копий названий.
+
+`statistics_visible(xid,pg_snapshot)` полностью удалён: сохранённый snapshot сам по себе не удерживает старые версии при UPDATE/vacuum, а расширение 32-bit xmin и frozen tuples нельзя использовать как замену настоящему MVCC snapshot. Нет зависимости от wraparound/freeze: каждый запрос использует обычную видимость PostgreSQL. Non-ordering UPDATE и VACUUM FREEZE проверены; намеренное административное изменение даты/удаление факта может изменить live порядок и требует refresh. Обычные клиентские операции не переписывают завершённые факты. Сводка может быть новее открытого feed.
 
 ## Поздравления
 
@@ -97,8 +99,16 @@ EXPLAIN ANALYZE на disposable PostgreSQL 17, fixture **3 000 joint instances /
 
 ## Проверки и безопасное развёртывание
 
-`npm run typecheck`, `npm run lint`, `npm test`, `npm run build`. Unit/UI: 99 тестов; DB: 84 security/RPC + 6 полных store migration = 90, без пропусков. Покрыты точные пороги, pre-migration факты без повторных начислений, duplicate calls, refund/receipt, приватность, старый/новый партнёр, UTC midnight/7/30/streak, пустые состояния, cursor replay/ties/actor/expiry/epoch/cap, поздний COMMIT, конкурентные acknowledge и старые regression suites. UI в jsdom; полноценный browser E2E двух окон/визуальные снимки не выполнялись.
+`npm run typecheck`, `npm run lint`, `npm test`, `npm run build`. Исходный этап: Unit/UI 99 тестов; DB 84 security/RPC + 6 полных store migration = 90, без пропусков. Покрыты точные пороги, pre-migration факты без повторных начислений, duplicate calls, refund/receipt, приватность, старый/новый партнёр, UTC midnight/7/30/streak, пустые состояния, cursor replay/ties/actor/expiry/epoch/cap, поздний COMMIT, конкурентные acknowledge и старые regression suites. UI в jsdom; полноценный browser E2E двух окон/визуальные снимки не выполнялись.
 
 Локальный `npm run test:supabase -- <LOCAL_STATUS_JSON>` дополнен настоящими JWT/RLS/RPC, историческими счётчиками/13 badges/остатком Coins/UTC, keyset и baseline, запретом внутренних API и приватностью нового партнёра; прошёл на PostgreSQL 17.11 / GoTrue 2.197 / PostgREST 16.4. Только собственные новые disposable local Auth-аккаунты с проверкой очистки, не рабочая облачная пара. Hosted Dashboard/SMTP не проверялись.
 
 Новых env, ключей или Dashboard-настроек нет. После отдельного разрешения владельца: проверить target ref/backup, `db push --dry-run`, применить только pending migration, выполнить read-only grants audit и обновить типы по `supabase.md`. Создание индексов обычное транзакционное, не CONCURRENTLY: на большой базе нужно согласованное окно и оценка блокировок. Приложение/setup/CI SQL удалённо не запускают. Не reset, не трогать существующие аккаунты. PR оставить открытым без merge.
+
+## Дополнительное review PR #6
+
+Подтверждённый дефект: имитация snapshot через xmin потеряла события после owner UPDATE без изменения порядка и VACUUM FREEZE (реальный baseline-тест: 1 вместо 4). Исправлено заменой на описанную live keyset модель с явными границами гарантии. Старые миграции не меняются.
+
+Профилактика: UI скрывает ранее загруженные названия при отказе курсора, проверяет server epoch до отображения ответа; серверная изоляция нового партнёра уже действовала. Cumulative XP до начала окна уже считался правильно; добавлен явный `opening_together_xp` и подпись «До начала периода», тесты нулевых дней/исторического остатка и скрытия графика при расхождении. Клиентского bypass SQL grants не обнаружено, проверки усилены.
+
+Повторное выполнение дополнительных проверок: typecheck, lint, 102 UI/unit и 94 PostgreSQL (88 security/RPC + 6 store migration) — успешно. Результат Netlify не следует из локального build: старый deploy `6ad6a311323028ef5f5e0677` подтверждён как failure через GitHub/Netlify metadata, но Build API возвращает 401, публичный endpoint журнала — 404. Причина не установлена без доступа к самому журналу; запрос владельцу на текст лога отправлен. Изменения Netlify-конфигурации без установленной причины не выполнялись.

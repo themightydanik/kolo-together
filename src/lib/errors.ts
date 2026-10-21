@@ -69,6 +69,8 @@ export function errorMessage(error: unknown): string {
       'Период завершился. Обновите список для текущего экземпляра.',
   }
   if (Object.hasOwn(taskErrors, message)) return taskErrors[message]
+  if (message === 'statistics_context_changed')
+    return 'Состав пары изменился. Обновите страницу, чтобы получить доступную историю.'
   if (message === 'invalid_statistics_cursor')
     return 'Состав пары или история изменились. Обновите историю с начала.'
   if (message === 'recovery_required')

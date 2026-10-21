@@ -171,6 +171,11 @@ export function StatisticsCards({ data }: { data: Statistics }) {
             <h3 className="mb-3 mt-6 text-sm">
               Накопление Together XP · 30 дней, UTC
             </h3>
+            <p className="mb-3 text-xs text-muted-foreground">
+              До начала периода:{' '}
+              {data.shared.opening_together_xp.toLocaleString('ru-RU')} Together
+              XP. Значения включают этот накопленный опыт.
+            </p>
             <div
               className="flex h-24 items-end gap-1"
               role="img"
@@ -273,13 +278,23 @@ function Congratulations({ data }: { data: Statistics }) {
 export function JointHistory({ context }: { context: string }) {
   const query = useJointHistory(context)
   const cache = useQueryClient()
-  const items = query.data?.pages.flatMap((page) => page.items) ?? []
+  const items = query.isError
+    ? []
+    : (query.data?.pages.flatMap((page) => page.items) ?? [])
   return (
     <Card>
       <h2 className="mb-4 flex items-center gap-2 font-semibold">
         <History size={20} aria-hidden="true" />
         История совместного пути
       </h2>
+      <Button
+        variant="ghost"
+        onClick={() => {
+          void cache.resetQueries({ queryKey: ['joint-history'] })
+        }}
+      >
+        Обновить с начала
+      </Button>
       <p className="mb-4 text-xs text-muted-foreground">
         Даты UTC. Только доступные события нынешних участников. Достижения XP
         пространства без достоверной даты не входят в хронологию.
