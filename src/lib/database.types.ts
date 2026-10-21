@@ -1,3 +1,10 @@
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
 import type {
   Ritual,
   RitualConsent,
@@ -16,7 +23,7 @@ import type {
   HistoryPage,
   HistoryCursor,
 } from '../features/statistics/model'
-/** Schema snapshot through 20261021120000_couple_rituals.sql.
+/** Schema snapshot through 20261022120000_emotional_connection.sql.
  * Refresh with Supabase CLI (see docs/supabase.md) and review the diff. */
 export type Profile = {
   id: string
@@ -293,6 +300,102 @@ type Table<Row, Insert, Update> = {
 export type Database = {
   public: {
     Tables: {
+      connection_catalog: Table<
+        {
+          kind: 'card' | 'questionnaire'
+          id: string
+          version: number
+          content: Json
+        },
+        never,
+        never
+      >
+      connection_moods: Table<
+        {
+          user_id: string
+          day: string
+          mood: string
+          intensity: number
+          note: string
+          support: boolean
+          shared: boolean
+          member_id: string | null
+          partner_member_id: string | null
+          version: number
+        },
+        never,
+        never
+      >
+      connection_reactions: Table<
+        { owner_id: string; day: string; user_id: string; reaction: string },
+        never,
+        never
+      >
+      connection_sessions: Table<
+        {
+          id: string
+          space_id: string
+          a: string
+          b: string
+          am: string
+          bm: string
+          kind: 'game' | 'questionnaire'
+          catalog_id: string | null
+          status: string
+          opt_a: boolean
+          opt_b: boolean
+          position: number
+          created_at: string
+        },
+        never,
+        never
+      >
+      connection_answers: Table<
+        {
+          session_id: string
+          user_id: string
+          slot: number
+          draft: Json
+          submitted: boolean
+          published: boolean
+          skipped: boolean
+          version: number
+        },
+        never,
+        never
+      >
+      connection_deck: Table<
+        {
+          session_id: string
+          position: number
+          card_id: string
+          drawn: boolean
+        },
+        never,
+        never
+      >
+      connection_draws: Table<
+        { session_id: string; slot: number; card_id: string },
+        never,
+        never
+      >
+      connection_events: Table<
+        {
+          session_id: string
+          position: number
+          sender: string
+          recipient: string
+          acknowledged: boolean
+        },
+        never,
+        never
+      >
+      connection_requests: Table<
+        { user_id: string; request_id: string; intent: Json; result: Json },
+        never,
+        never
+      >
+
       couple_rituals: Table<Ritual, never, never>
       ritual_consents: Table<RitualConsent, never, never>
       ritual_instances: Table<RitualInstance, never, never>
@@ -358,6 +461,31 @@ export type Database = {
     }
     Views: { goal_progress: { Row: GoalProgress; Relationships: [] } }
     Functions: {
+      connection_access: { Args: { p_id: string }; Returns: boolean }
+      connection_mood_access: {
+        Args: { p_user: string; p_day: string }
+        Returns: boolean
+      }
+      connection_answer_access: {
+        Args: { p_id: string; p_user: string; p_slot: number }
+        Returns: boolean
+      }
+
+      connection_action: {
+        Args: {
+          p_action: string
+          p_id: string | null
+          p_expected: number
+          p_payload: Json
+          p_request: string
+        }
+        Returns: Json
+      }
+      connection_read: {
+        Args: { p_view: string; p_id: string | null; p_cursor: Json | null }
+        Returns: Json
+      }
+
       can_read_ritual: { Args: { p_ritual_id: string }; Returns: boolean }
       refresh_ritual_instances: { Args: Record<string, never>; Returns: string }
       create_couple_ritual: {

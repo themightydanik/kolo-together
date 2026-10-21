@@ -990,6 +990,12 @@ try {
     )
   await db.query(await readFile('supabase/tests/ritual-privileges.sql', 'utf8'))
   await db.query("notify pgrst,'reload schema'")
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const ready = await a.from('ritual_consents').select('id').limit(1)
+    if (!ready.error) break
+    if (attempt === 99) throw Error('Ritual schema cache unavailable')
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
   const ritualTerms = {
     title: 'Чай без спешки',
     description: 'Только по желанию обоих',
@@ -1150,6 +1156,167 @@ try {
   console.log(
     'PASS: rituals real Auth/JWT/RLS, bilateral consent, two independent marks, duplicates, history, zero economy effects and private helper denial',
   )
+  step = 'emotional connection schema, real Auth and private answers'
+  if (
+    !(
+      await db.query("select to_regclass('public.connection_sessions') as name")
+    ).rows[0].name
+  ) {
+    await db.query(
+      await readFile(
+        'supabase/migrations/20261022120000_emotional_connection.sql',
+        'utf8',
+      ),
+    )
+  }
+  await db.query(
+    await readFile('supabase/tests/connection-privileges.sql', 'utf8'),
+  )
+  await db.query("notify pgrst,'reload schema'")
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const ready = await a.rpc('connection_read', { p_view: 'home' })
+    if (!ready.error) break
+    if (attempt === 99) throw Error('Connection schema cache unavailable')
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  const ecWrite = async (
+    client,
+    action,
+    id = null,
+    expected = 0,
+    payload = {},
+    request = randomUUID(),
+  ) =>
+    check(
+      await client.rpc('connection_action', {
+        p_action: action,
+        p_id: id,
+        p_expected: expected,
+        p_payload: payload,
+        p_request: request,
+      }),
+      'Connection ' + action,
+    )
+  const ecRead = async (client, view = 'home', id = null) =>
+    check(
+      await client.rpc('connection_read', {
+        p_view: view,
+        p_id: id,
+        p_cursor: null,
+      }),
+      'Read connection',
+    ).data
+  const ecDay = (await ecRead(a)).today
+  await ecWrite(a, 'mood', null, 0, {
+    day: ecDay,
+    mood: 'calm',
+    intensity: 3,
+    note: 'local fixture only',
+    shared: false,
+    support: true,
+  })
+  assert.equal((await ecRead(b)).partner_mood, null)
+  assert.equal(
+    check(await b.from('connection_moods').select('*'), 'Mood RLS').length,
+    0,
+  )
+  await ecWrite(a, 'mood', null, 1, {
+    day: ecDay,
+    mood: 'calm',
+    intensity: 3,
+    note: 'shared local fixture',
+    shared: true,
+    support: true,
+  })
+  await ecWrite(b, 'react', null, 0, { day: ecDay, reaction: 'here' })
+  const ecQuiz = await ecWrite(a, 'start_questionnaire', null, 0, {
+    catalog: 'support',
+  })
+  await ecWrite(b, 'accept', ecQuiz.id)
+  const ecQ = (await ecRead(a, 'session', ecQuiz.id)).questionnaire
+  const ecAnswers = Object.fromEntries(
+    ecQ.questions.map((q) => [q.id, q.type === 'scale' ? '4' : 'talk']),
+  )
+  await ecWrite(a, 'submit', ecQuiz.id, 0, {
+    slot: '0',
+    answers: ecAnswers,
+    publish: true,
+  })
+  assert.equal((await ecRead(b, 'session', ecQuiz.id)).answers[0].draft, null)
+  await ecWrite(b, 'submit', ecQuiz.id, 0, {
+    slot: '0',
+    answers: ecAnswers,
+    publish: true,
+  })
+  assert.equal(
+    (await ecRead(a, 'session', ecQuiz.id)).session.status,
+    'completed',
+  )
+  const ecGame = await ecWrite(a, 'start_game')
+  await ecWrite(b, 'accept', ecGame.id)
+  await ecWrite(a, 'draw', ecGame.id, 0)
+  assert.equal(
+    (await ecRead(a, 'session', ecGame.id)).card.id,
+    (await ecRead(b, 'session', ecGame.id)).card.id,
+  )
+  await ecWrite(a, 'save', ecGame.id, 0, {
+    slot: '1',
+    answers: 'Private fixture',
+  })
+  assert.equal(
+    check(
+      await b
+        .from('connection_answers')
+        .select('*')
+        .eq('session_id', ecGame.id),
+      'Draft RLS',
+    ).length,
+    0,
+  )
+  await ecWrite(a, 'submit', ecGame.id, 1, {
+    slot: '1',
+    answers: 'Shared fixture',
+    publish: true,
+  })
+  assert.equal((await ecRead(b, 'session', ecGame.id)).answers[0].draft, null)
+  await ecWrite(b, 'skip', ecGame.id, 0, { slot: '1' })
+  assert.equal(
+    (await ecRead(b, 'session', ecGame.id)).answers.find(
+      (x) => x.user_id === signup.user.id,
+    ).draft,
+    'Shared fixture',
+  )
+  const ecRace = await Promise.all([
+    a.rpc('connection_action', {
+      p_action: 'draw',
+      p_id: ecGame.id,
+      p_expected: 1,
+      p_payload: {},
+      p_request: randomUUID(),
+    }),
+    b.rpc('connection_action', {
+      p_action: 'draw',
+      p_id: ecGame.id,
+      p_expected: 1,
+      p_payload: {},
+      p_request: randomUUID(),
+    }),
+  ])
+  assert.equal(ecRace.filter((r) => !r.error).length, 1)
+  assert.equal((await ecRead(a, 'session', ecGame.id)).session.position, 2)
+  assert.ok(
+    (await a.from('connection_sessions').delete().eq('id', ecGame.id)).error,
+  )
+  assert.ok((await a.rpc('connection_clock')).error)
+  assert.ok((await anon.rpc('connection_read', { p_view: 'home' })).error)
+  assert.equal(
+    check(await a.rpc('get_statistics'), 'Economy preserved').shared
+      .together_xp,
+    70,
+  )
+  console.log(
+    'PASS: emotional check-in privacy, support, independent questionnaire disclosure, shared shuffled game, private drafts, concurrent transition and effective Supabase ACLs',
+  )
   const unfinishedGoal = await createGoal()
   check(
     await b.rpc('resolve_goal_consent', {
@@ -1307,6 +1474,12 @@ try {
     ).rows[0].status,
     'void',
   )
+  assert.ok(
+    (await a.rpc('connection_read', { p_view: 'session', p_id: ecGame.id }))
+      .error,
+    'Departure revokes game',
+  )
+  assert.equal((await ecRead(a)).moods[0].shared, false)
   const rejoinToken = check(
     await a.rpc('create_couple_invitation', { p_email: email('b') }),
     'Invite original partner back',
@@ -1378,6 +1551,13 @@ try {
   console.log(
     'PASS: ritual departure closes/voids, same-partner return preserves completed facts without revival, new partner history remains private',
   )
+  assert.deepEqual((await ecRead(c, 'sessions')).items, [])
+  assert.equal((await ecRead(c)).partner_mood, null)
+  assert.ok(
+    (await b.rpc('connection_read', { p_view: 'session', p_id: ecQuiz.id }))
+      .error,
+    'Old membership cannot recover sensitive report',
+  )
   const replacementStats = check(
     await c.rpc('get_statistics'),
     'New partner safe statistics',
@@ -1425,6 +1605,13 @@ try {
   )
 } catch (error) {
   console.error(`FAIL: ${step} (${error.code ?? error.name ?? 'error'})`)
+  if (error.code === 'ERR_ASSERTION')
+    console.error(
+      error.stack
+        ?.split('\n')
+        .filter((line) => line.includes('test-supabase.mjs:'))
+        .join('\n'),
+    )
   process.exitCode = 1
 } finally {
   let cleanupFailed = false

@@ -24,3 +24,27 @@ button { cursor: pointer; }
 @layer components {
  .field { @apply mt-2 block min-h-11 w-full rounded-xl border border-border bg-background px-3 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring; }
 }
+
+/* A small tabletop inside the existing KOLO shell. No remote fonts/assets. */
+.connection-input { display:block; width:100%; min-width:0; border:1px solid var(--border); border-radius:.8rem; padding:.7rem; margin-top:.4rem; background:var(--background); color:var(--foreground); }
+.connection-input:focus-visible {outline:2px solid var(--primary);outline-offset:2px}
+.romantic-deck {position:relative;max-width:330px;width:calc(100% - 20px);margin:26px auto 30px;perspective:1100px;isolation:isolate}
+.romantic-deck::before,.romantic-deck::after{content:'';position:absolute;inset:0;border-radius:24px;background:var(--card-color);border:1px solid #dfc49e;transform:translateY(calc(var(--stack-size)*3px)) rotate(-3deg);z-index:-1;opacity:.6}
+.romantic-deck::after{transform:translateY(calc(var(--stack-size)*5px)) rotate(3deg);opacity:.35}
+.romantic-card{position:relative;display:block;width:100%;aspect-ratio:2/3;border:0;border-radius:24px;transform-style:preserve-3d;transition:transform .65s ease,box-shadow .5s ease;box-shadow:0 15px 30px #30203a30;cursor:pointer;animation:card-draw .6s ease both;text-align:center;color:#fff8ed;background:linear-gradient(#0005,#0005),var(--card-color);}
+.romantic-card:hover{transform:translateY(-5px);box-shadow:0 22px 35px #30203a40}
+.romantic-card.is-flipped{transform:rotateY(180deg)}
+.romantic-card:focus-visible{outline:3px solid var(--primary);outline-offset:7px}
+.romantic-face{position:absolute;inset:12px;border:1px solid #fff0d280;border-radius:16px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:20px 16px;backface-visibility:hidden;background:linear-gradient(135deg,#0002,transparent 45%,#0003);overflow:auto}
+.romantic-face::before{content:'✧';position:absolute;top:4px;left:9px;color:#fff0d2}
+.romantic-category{font-size:.8rem;letter-spacing:.06em;color:#fff; text-shadow:0 1px 3px #0009}
+.romantic-symbol{font-size:2.2rem;color:#fff0d2;line-height:1}
+.romantic-question{font-family:Georgia,'Times New Roman',serif;font-size:clamp(1.08rem,4.8vw,1.45rem);line-height:1.4;overflow-wrap:anywhere;color:#fff;text-shadow:0 1px 3px #0009}
+.romantic-number{font-size:.65rem;letter-spacing:.12em;color:#fff}
+.romantic-back{transform:rotateY(180deg);background:radial-gradient(ellipse,#ffffff16,transparent),repeating-linear-gradient(45deg,transparent,transparent 15px,#ffffff06 15px,#ffffff06 16px),#554166;justify-content:space-around;color:#ffedcf}
+.romantic-back strong{font-family:Georgia,serif;font-size:3rem;font-weight:normal;line-height:1.1}
+.romantic-back>span:last-child{font-size:.75rem}
+.published-answers>div{animation:answer-reveal .4s ease both}.deck-complete{padding:2rem 1rem;text-align:center;background:linear-gradient(135deg,#b76e7918,#d39a6520);border-radius:2rem;animation:answer-reveal .8s ease both}
+@keyframes card-draw{from{opacity:0;translate:0 18px;rotate:-4deg}to{opacity:1;translate:0;rotate:0deg}}
+@keyframes answer-reveal{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){.romantic-card,.published-answers>div,.deck-complete{animation:none;transition:none}.romantic-card:hover{transform:none}.romantic-card.is-flipped{transform:rotateY(180deg)}}

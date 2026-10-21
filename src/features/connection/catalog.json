@@ -1,0 +1,1890 @@
+{
+  "categories": [
+    {
+      "id": "us",
+      "title": "Давай, про нас",
+      "color": "#B76E79",
+      "symbol": "❀"
+    },
+    {
+      "id": "dessert",
+      "title": "А тепер десерт",
+      "color": "#D39A65",
+      "symbol": "✧"
+    },
+    {
+      "id": "trust",
+      "title": "Довіра",
+      "color": "#567F81",
+      "symbol": "❈"
+    },
+    {
+      "id": "heat",
+      "title": "Високі температури",
+      "color": "#A74652",
+      "symbol": "♨"
+    },
+    {
+      "id": "secret",
+      "title": "Таємне та бажане",
+      "color": "#76618E",
+      "symbol": "☾"
+    }
+  ],
+  "cards": [
+    {
+      "id": "us-01",
+      "category": "us",
+      "text": "Яку нашу випадкову зустріч ти пам’ятаєш найвиразніше?",
+      "version": 1
+    },
+    {
+      "id": "us-02",
+      "category": "us",
+      "text": "Яка дрібниця вдома нагадує тобі про нас?",
+      "version": 1
+    },
+    {
+      "id": "us-03",
+      "category": "us",
+      "text": "Коли поруч зі мною ти відчуваєш затишок?",
+      "version": 1
+    },
+    {
+      "id": "us-04",
+      "category": "us",
+      "text": "Яку нашу прогулянку ти зберіг(-ла) б у маленькій пляшечці спогадів?",
+      "version": 1
+    },
+    {
+      "id": "us-05",
+      "category": "us",
+      "text": "Яка моя звичка непомітно стала для тебе рідною?",
+      "version": 1
+    },
+    {
+      "id": "us-06",
+      "category": "us",
+      "text": "Який звук міг би бути саундтреком нашого знайомства?",
+      "version": 1
+    },
+    {
+      "id": "us-07",
+      "category": "us",
+      "text": "Що ми навчилися робити разом краще, ніж окремо?",
+      "version": 1
+    },
+    {
+      "id": "us-08",
+      "category": "us",
+      "text": "Яку звичайну неділю з нами ти вважаєш особливою?",
+      "version": 1
+    },
+    {
+      "id": "us-09",
+      "category": "us",
+      "text": "Яка спільна фотографія розповідає більше, ніж видно на ній?",
+      "version": 1
+    },
+    {
+      "id": "us-10",
+      "category": "us",
+      "text": "Який мій жест допомагає тобі видихнути?",
+      "version": 1
+    },
+    {
+      "id": "us-11",
+      "category": "us",
+      "text": "Де ти хотів(-ла) б зустріти зі мною світанок?",
+      "version": 1
+    },
+    {
+      "id": "us-12",
+      "category": "us",
+      "text": "Яка наша маленька традиція заслуговує на продовження?",
+      "version": 1
+    },
+    {
+      "id": "us-13",
+      "category": "us",
+      "text": "Що в мені приємно здивувало тебе з часом?",
+      "version": 1
+    },
+    {
+      "id": "us-14",
+      "category": "us",
+      "text": "Який наш смішний промах досі викликає усмішку?",
+      "version": 1
+    },
+    {
+      "id": "us-15",
+      "category": "us",
+      "text": "Яку страву ти пов’язуєш із нами?",
+      "version": 1
+    },
+    {
+      "id": "us-16",
+      "category": "us",
+      "text": "Як би ти назвав(-ла) розділ книги про цей період нашого життя?",
+      "version": 1
+    },
+    {
+      "id": "us-17",
+      "category": "us",
+      "text": "Який день удвох ти хотів(-ла) б пережити повільніше?",
+      "version": 1
+    },
+    {
+      "id": "us-18",
+      "category": "us",
+      "text": "Що ти помічаєш у мені, коли ми мовчимо поруч?",
+      "version": 1
+    },
+    {
+      "id": "us-19",
+      "category": "us",
+      "text": "Який невеликий подарунок від мене залишив теплий слід?",
+      "version": 1
+    },
+    {
+      "id": "us-20",
+      "category": "us",
+      "text": "Куди ми могли б повернутися вже трохи іншими людьми?",
+      "version": 1
+    },
+    {
+      "id": "us-21",
+      "category": "us",
+      "text": "Які три слова описують наше найзатишніше місце?",
+      "version": 1
+    },
+    {
+      "id": "us-22",
+      "category": "us",
+      "text": "Яку спільну справу ти хотів(-ла) б спробувати вперше?",
+      "version": 1
+    },
+    {
+      "id": "us-23",
+      "category": "us",
+      "text": "Який момент змусив тебе подумати: «Ми впоралися»?",
+      "version": 1
+    },
+    {
+      "id": "us-24",
+      "category": "us",
+      "text": "Що ти цінуєш у наших буденних розмовах?",
+      "version": 1
+    },
+    {
+      "id": "us-25",
+      "category": "us",
+      "text": "Яку нашу історію ти розповів(-ла) б нам через двадцять років?",
+      "version": 1
+    },
+    {
+      "id": "us-26",
+      "category": "us",
+      "text": "Що робить нашу кухню або стіл місцем зустрічі?",
+      "version": 1
+    },
+    {
+      "id": "us-27",
+      "category": "us",
+      "text": "Який маршрут містом став для тебе нашим?",
+      "version": 1
+    },
+    {
+      "id": "us-28",
+      "category": "us",
+      "text": "Яке моє повідомлення було особливо вчасним?",
+      "version": 1
+    },
+    {
+      "id": "us-29",
+      "category": "us",
+      "text": "Що ти хотів(-ла) б частіше помічати в наших днях?",
+      "version": 1
+    },
+    {
+      "id": "us-30",
+      "category": "us",
+      "text": "Який добрий спогад ми могли б створити вже цього тижня?",
+      "version": 1
+    },
+    {
+      "id": "dessert-01",
+      "category": "dessert",
+      "text": "Яку романтичну записку було б приємно знайти в кишені?",
+      "version": 1
+    },
+    {
+      "id": "dessert-02",
+      "category": "dessert",
+      "text": "Як виглядало б наше побачення за ціною двох чашок кави?",
+      "version": 1
+    },
+    {
+      "id": "dessert-03",
+      "category": "dessert",
+      "text": "Яка музика додала б іскри нашому вечору?",
+      "version": 1
+    },
+    {
+      "id": "dessert-04",
+      "category": "dessert",
+      "text": "Який комплімент від мене ти хотів(-ла) б почути сьогодні?",
+      "version": 1
+    },
+    {
+      "id": "dessert-05",
+      "category": "dessert",
+      "text": "Який несподіваний образ для побачення тебе потішив би?",
+      "version": 1
+    },
+    {
+      "id": "dessert-06",
+      "category": "dessert",
+      "text": "Куди ти запросив(-ла) б мене, якби ми щойно познайомилися?",
+      "version": 1
+    },
+    {
+      "id": "dessert-07",
+      "category": "dessert",
+      "text": "Який аромат асоціюється в тебе з романтикою?",
+      "version": 1
+    },
+    {
+      "id": "dessert-08",
+      "category": "dessert",
+      "text": "Яка грайлива назва пасувала б нашому дуету?",
+      "version": 1
+    },
+    {
+      "id": "dessert-09",
+      "category": "dessert",
+      "text": "Якби ми влаштували пікнік у кімнаті, що було б у кошику?",
+      "version": 1
+    },
+    {
+      "id": "dessert-10",
+      "category": "dessert",
+      "text": "Який танець ти спробував(-ла) б зі мною без глядачів?",
+      "version": 1
+    },
+    {
+      "id": "dessert-11",
+      "category": "dessert",
+      "text": "Який десерт найкраще передає твій сьогоднішній настрій?",
+      "version": 1
+    },
+    {
+      "id": "dessert-12",
+      "category": "dessert",
+      "text": "Як ти любиш отримувати запрошення на побачення?",
+      "version": 1
+    },
+    {
+      "id": "dessert-13",
+      "category": "dessert",
+      "text": "Що перетворює звичайну вечерю на романтичну?",
+      "version": 1
+    },
+    {
+      "id": "dessert-14",
+      "category": "dessert",
+      "text": "Який мій погляд ти впізнав(-ла) б серед сотні?",
+      "version": 1
+    },
+    {
+      "id": "dessert-15",
+      "category": "dessert",
+      "text": "Яку маленьку таємну усмішку ми могли б мати на людях?",
+      "version": 1
+    },
+    {
+      "id": "dessert-16",
+      "category": "dessert",
+      "text": "Що ти обрав(-ла) б: побачення на даху чи біля води, і чому?",
+      "version": 1
+    },
+    {
+      "id": "dessert-17",
+      "category": "dessert",
+      "text": "Яка кумедна спроба флірту могла б тебе розсмішити?",
+      "version": 1
+    },
+    {
+      "id": "dessert-18",
+      "category": "dessert",
+      "text": "Який колір пасує нашому ідеальному вечору?",
+      "version": 1
+    },
+    {
+      "id": "dessert-19",
+      "category": "dessert",
+      "text": "Яке кіношне побачення ти переробив(-ла) б під нас?",
+      "version": 1
+    },
+    {
+      "id": "dessert-20",
+      "category": "dessert",
+      "text": "Яка дрібна увага зранку налаштовує тебе на романтику?",
+      "version": 1
+    },
+    {
+      "id": "dessert-21",
+      "category": "dessert",
+      "text": "Що тобі приємніше: сюрприз із підказкою чи чіткий план?",
+      "version": 1
+    },
+    {
+      "id": "dessert-22",
+      "category": "dessert",
+      "text": "Яку страву було б весело готувати вдвох під музику?",
+      "version": 1
+    },
+    {
+      "id": "dessert-23",
+      "category": "dessert",
+      "text": "Як би виглядало наше побачення без жодного екрана?",
+      "version": 1
+    },
+    {
+      "id": "dessert-24",
+      "category": "dessert",
+      "text": "Який аксесуар ти вибрав(-ла) б для мене на святковий вечір?",
+      "version": 1
+    },
+    {
+      "id": "dessert-25",
+      "category": "dessert",
+      "text": "Який романтичний жест на відстані тобі близький?",
+      "version": 1
+    },
+    {
+      "id": "dessert-26",
+      "category": "dessert",
+      "text": "Про що ти запитав(-ла) б мене під час першого танцю?",
+      "version": 1
+    },
+    {
+      "id": "dessert-27",
+      "category": "dessert",
+      "text": "Яку приємну витівку можна вигадати для дощового дня?",
+      "version": 1
+    },
+    {
+      "id": "dessert-28",
+      "category": "dessert",
+      "text": "Як ти любиш, щоб закінчувалося вдале побачення?",
+      "version": 1
+    },
+    {
+      "id": "dessert-29",
+      "category": "dessert",
+      "text": "Яке місце в нашому місті має недооцінений романтичний потенціал?",
+      "version": 1
+    },
+    {
+      "id": "dessert-30",
+      "category": "dessert",
+      "text": "Який привід для маленького свята ми могли б вигадати самі?",
+      "version": 1
+    },
+    {
+      "id": "trust-01",
+      "category": "trust",
+      "text": "Як мені зрозуміти, що тобі зараз потрібне слухання, а не порада?",
+      "version": 1
+    },
+    {
+      "id": "trust-02",
+      "category": "trust",
+      "text": "Про яку свою межу тобі хотілося б говорити легше?",
+      "version": 1
+    },
+    {
+      "id": "trust-03",
+      "category": "trust",
+      "text": "Які слова допомагають тобі відчувати, що тебе почули?",
+      "version": 1
+    },
+    {
+      "id": "trust-04",
+      "category": "trust",
+      "text": "Що для тебе означає надійність у дрібницях?",
+      "version": 1
+    },
+    {
+      "id": "trust-05",
+      "category": "trust",
+      "text": "Як ми можемо поважати приватність телефонів одне одного?",
+      "version": 1
+    },
+    {
+      "id": "trust-06",
+      "category": "trust",
+      "text": "Який спосіб попросити паузу в розмові тобі зручний?",
+      "version": 1
+    },
+    {
+      "id": "trust-07",
+      "category": "trust",
+      "text": "Що допомагає тобі повертатися до складної теми?",
+      "version": 1
+    },
+    {
+      "id": "trust-08",
+      "category": "trust",
+      "text": "Як ти хотів(-ла) б чути вибачення?",
+      "version": 1
+    },
+    {
+      "id": "trust-09",
+      "category": "trust",
+      "text": "Коли тобі найпростіше сказати «я не знаю»?",
+      "version": 1
+    },
+    {
+      "id": "trust-10",
+      "category": "trust",
+      "text": "Яке запитання варто ставити перед тим, як давати пораду?",
+      "version": 1
+    },
+    {
+      "id": "trust-11",
+      "category": "trust",
+      "text": "Що для тебе відрізняє турботу від контролю?",
+      "version": 1
+    },
+    {
+      "id": "trust-12",
+      "category": "trust",
+      "text": "Як я можу дбайливо реагувати на твоє «ні»?",
+      "version": 1
+    },
+    {
+      "id": "trust-13",
+      "category": "trust",
+      "text": "Які твої переживання не потребують негайного розв’язання?",
+      "version": 1
+    },
+    {
+      "id": "trust-14",
+      "category": "trust",
+      "text": "Що дає тобі відчуття свободи всередині стосунків?",
+      "version": 1
+    },
+    {
+      "id": "trust-15",
+      "category": "trust",
+      "text": "Як ти хочеш домовлятися про час наодинці?",
+      "version": 1
+    },
+    {
+      "id": "trust-16",
+      "category": "trust",
+      "text": "Яку помилку ти хотів(-ла) б мати право визнати без сорому?",
+      "version": 1
+    },
+    {
+      "id": "trust-17",
+      "category": "trust",
+      "text": "Що допомагає тобі довіряти власному темпу зближення?",
+      "version": 1
+    },
+    {
+      "id": "trust-18",
+      "category": "trust",
+      "text": "Як запитати про складний день, не влаштовуючи допит?",
+      "version": 1
+    },
+    {
+      "id": "trust-19",
+      "category": "trust",
+      "text": "Який вид підтримки може ненавмисно втомлювати тебе?",
+      "version": 1
+    },
+    {
+      "id": "trust-20",
+      "category": "trust",
+      "text": "Що тобі важливо знати перед розмовою про гроші?",
+      "version": 1
+    },
+    {
+      "id": "trust-21",
+      "category": "trust",
+      "text": "Як ми могли б говорити про ревнощі без звинувачень?",
+      "version": 1
+    },
+    {
+      "id": "trust-22",
+      "category": "trust",
+      "text": "Яку домовленість варто час від часу перевіряти заново?",
+      "version": 1
+    },
+    {
+      "id": "trust-23",
+      "category": "trust",
+      "text": "Що для тебе означає залишатися собою поруч зі мною?",
+      "version": 1
+    },
+    {
+      "id": "trust-24",
+      "category": "trust",
+      "text": "Як ти відчуваєш, що твої особисті дружби поважають?",
+      "version": 1
+    },
+    {
+      "id": "trust-25",
+      "category": "trust",
+      "text": "Коли добре мовчання підтримує тебе краще за слова?",
+      "version": 1
+    },
+    {
+      "id": "trust-26",
+      "category": "trust",
+      "text": "Який спосіб виправити непорозуміння тобі найближчий?",
+      "version": 1
+    },
+    {
+      "id": "trust-27",
+      "category": "trust",
+      "text": "Як ти хотів(-ла) б позначати тему, до якої ще не готовий(-а)?",
+      "version": 1
+    },
+    {
+      "id": "trust-28",
+      "category": "trust",
+      "text": "Що допомагає тобі просити про допомогу без почуття боргу?",
+      "version": 1
+    },
+    {
+      "id": "trust-29",
+      "category": "trust",
+      "text": "Яку обіцянку краще замінити чесним обговоренням можливостей?",
+      "version": 1
+    },
+    {
+      "id": "trust-30",
+      "category": "trust",
+      "text": "Як ми зрозуміємо, що наша домовленість досі підходить обом?",
+      "version": 1
+    },
+    {
+      "id": "heat-01",
+      "category": "heat",
+      "text": "Яка атмосфера допомагає тобі почуватися вільно під час розмови про близькість?",
+      "version": 1
+    },
+    {
+      "id": "heat-02",
+      "category": "heat",
+      "text": "Як тобі комфортно повідомляти, що сьогодні хочеться лише ніжності?",
+      "version": 1
+    },
+    {
+      "id": "heat-03",
+      "category": "heat",
+      "text": "Які слова про привабливість звучать для тебе тепло?",
+      "version": 1
+    },
+    {
+      "id": "heat-04",
+      "category": "heat",
+      "text": "Як ти хотів(-ла) б запитувати про бажання без очікування згоди?",
+      "version": 1
+    },
+    {
+      "id": "heat-05",
+      "category": "heat",
+      "text": "Що допомагає тобі розслабитися перед інтимною розмовою?",
+      "version": 1
+    },
+    {
+      "id": "heat-06",
+      "category": "heat",
+      "text": "Як ти розумієш різницю між фліртом і запрошенням до дії?",
+      "version": 1
+    },
+    {
+      "id": "heat-07",
+      "category": "heat",
+      "text": "Який спосіб перевірити комфорт у моменті тобі подобається?",
+      "version": 1
+    },
+    {
+      "id": "heat-08",
+      "category": "heat",
+      "text": "Що робить дотик бажаним саме для тебе?",
+      "version": 1
+    },
+    {
+      "id": "heat-09",
+      "category": "heat",
+      "text": "Як тобі приємно давати зрозуміти, що ти передумав(-ла)?",
+      "version": 1
+    },
+    {
+      "id": "heat-10",
+      "category": "heat",
+      "text": "Яку межу щодо публічних проявів ніжності ти хотів(-ла) б обговорити?",
+      "version": 1
+    },
+    {
+      "id": "heat-11",
+      "category": "heat",
+      "text": "Який темп романтичного вечора дозволяє тобі не поспішати?",
+      "version": 1
+    },
+    {
+      "id": "heat-12",
+      "category": "heat",
+      "text": "Що допомагає тобі говорити про власні вподобання без ніяковості?",
+      "version": 1
+    },
+    {
+      "id": "heat-13",
+      "category": "heat",
+      "text": "Як ми можемо залишати місце для сміху в близькості?",
+      "version": 1
+    },
+    {
+      "id": "heat-14",
+      "category": "heat",
+      "text": "Яке освітлення створює для тебе відчуття затишку?",
+      "version": 1
+    },
+    {
+      "id": "heat-15",
+      "category": "heat",
+      "text": "Як тобі комфортніше починати розмову про інтимні очікування?",
+      "version": 1
+    },
+    {
+      "id": "heat-16",
+      "category": "heat",
+      "text": "Яка форма ніжності приємна тобі після напруженого дня?",
+      "version": 1
+    },
+    {
+      "id": "heat-17",
+      "category": "heat",
+      "text": "Що для тебе означає взаємна уважність у близькості?",
+      "version": 1
+    },
+    {
+      "id": "heat-18",
+      "category": "heat",
+      "text": "Яке запитання про комфорт ти хотів(-ла) б чути частіше?",
+      "version": 1
+    },
+    {
+      "id": "heat-19",
+      "category": "heat",
+      "text": "Як відрізняється твоя потреба в близькості залежно від настрою?",
+      "version": 1
+    },
+    {
+      "id": "heat-20",
+      "category": "heat",
+      "text": "Які прояви романтики не потребують фізичного контакту?",
+      "version": 1
+    },
+    {
+      "id": "heat-21",
+      "category": "heat",
+      "text": "Що тобі важливо відчувати, коли ти відмовляєшся від близькості?",
+      "version": 1
+    },
+    {
+      "id": "heat-22",
+      "category": "heat",
+      "text": "Як ми могли б говорити про зміни бажань із часом?",
+      "version": 1
+    },
+    {
+      "id": "heat-23",
+      "category": "heat",
+      "text": "Яка музика допомагає тобі почуватися привабливо?",
+      "version": 1
+    },
+    {
+      "id": "heat-24",
+      "category": "heat",
+      "text": "Які слова після ніжного моменту підтримують тебе?",
+      "version": 1
+    },
+    {
+      "id": "heat-25",
+      "category": "heat",
+      "text": "Як ти хочеш домовлятися про приватність інтимних розмов?",
+      "version": 1
+    },
+    {
+      "id": "heat-26",
+      "category": "heat",
+      "text": "Що допомагає тобі не сприймати відмову як оцінку себе?",
+      "version": 1
+    },
+    {
+      "id": "heat-27",
+      "category": "heat",
+      "text": "Який спосіб запитати дозволу на обійми здається тобі природним?",
+      "version": 1
+    },
+    {
+      "id": "heat-28",
+      "category": "heat",
+      "text": "Яке бажання можна спокійно обговорити без обіцянки здійснення?",
+      "version": 1
+    },
+    {
+      "id": "heat-29",
+      "category": "heat",
+      "text": "Як ти хотів(-ла) б завершувати відверту розмову, якщо втомився(-лася)?",
+      "version": 1
+    },
+    {
+      "id": "heat-30",
+      "category": "heat",
+      "text": "Що для тебе робить близькість взаємною, а не обов’язковою?",
+      "version": 1
+    },
+    {
+      "id": "secret-01",
+      "category": "secret",
+      "text": "Яку незвичну професію ти спробував(-ла) б на один день?",
+      "version": 1
+    },
+    {
+      "id": "secret-02",
+      "category": "secret",
+      "text": "Яка маленька мрія чекає на вільні вихідні?",
+      "version": 1
+    },
+    {
+      "id": "secret-03",
+      "category": "secret",
+      "text": "Що ти колекціонував(-ла) б, якби місце не мало значення?",
+      "version": 1
+    },
+    {
+      "id": "secret-04",
+      "category": "secret",
+      "text": "Який лист ти хотів(-ла) б отримати від себе з майбутнього?",
+      "version": 1
+    },
+    {
+      "id": "secret-05",
+      "category": "secret",
+      "text": "Про яку подорож ти любиш думати перед сном?",
+      "version": 1
+    },
+    {
+      "id": "secret-06",
+      "category": "secret",
+      "text": "Яке вміння хотілося б опанувати без жодної користі?",
+      "version": 1
+    },
+    {
+      "id": "secret-07",
+      "category": "secret",
+      "text": "Яка частина твого характеру рідко помітна іншим?",
+      "version": 1
+    },
+    {
+      "id": "secret-08",
+      "category": "secret",
+      "text": "Як виглядав би твій день без необхідності справляти враження?",
+      "version": 1
+    },
+    {
+      "id": "secret-09",
+      "category": "secret",
+      "text": "Яку дитячу цікавість ти хотів(-ла) б повернути?",
+      "version": 1
+    },
+    {
+      "id": "secret-10",
+      "category": "secret",
+      "text": "Яка книга могла б підказати мені щось про твій внутрішній світ?",
+      "version": 1
+    },
+    {
+      "id": "secret-11",
+      "category": "secret",
+      "text": "Який подарунок свідчив би, що тебе уважно слухали?",
+      "version": 1
+    },
+    {
+      "id": "secret-12",
+      "category": "secret",
+      "text": "Про яку тему ти міг(-ла) б захоплено говорити годину?",
+      "version": 1
+    },
+    {
+      "id": "secret-13",
+      "category": "secret",
+      "text": "Яке місце ти хотів(-ла) б показати мені тільки тому, що воно твоє?",
+      "version": 1
+    },
+    {
+      "id": "secret-14",
+      "category": "secret",
+      "text": "Який невеликий ризик ти обрав(-ла) б заради цікавості?",
+      "version": 1
+    },
+    {
+      "id": "secret-15",
+      "category": "secret",
+      "text": "Що ти створив(-ла) б, якби не боявся(-лася) недосконалості?",
+      "version": 1
+    },
+    {
+      "id": "secret-16",
+      "category": "secret",
+      "text": "Яка твоя улюблена мрія зовсім не потребує великих грошей?",
+      "version": 1
+    },
+    {
+      "id": "secret-17",
+      "category": "secret",
+      "text": "Який святковий ритуал ти хотів(-ла) б придумати для себе?",
+      "version": 1
+    },
+    {
+      "id": "secret-18",
+      "category": "secret",
+      "text": "Яку роль у виставі ти таємно хотів(-ла) б зіграти?",
+      "version": 1
+    },
+    {
+      "id": "secret-19",
+      "category": "secret",
+      "text": "Яка запахова або смакова пам’ять переносить тебе в дитинство?",
+      "version": 1
+    },
+    {
+      "id": "secret-20",
+      "category": "secret",
+      "text": "Який комплімент про твій характер рідко звучить, але важливий?",
+      "version": 1
+    },
+    {
+      "id": "secret-21",
+      "category": "secret",
+      "text": "Що ти хотів(-ла) б відкласти в капсулу часу для нас?",
+      "version": 1
+    },
+    {
+      "id": "secret-22",
+      "category": "secret",
+      "text": "Яку пригоду можна пережити в межах одного кварталу?",
+      "version": 1
+    },
+    {
+      "id": "secret-23",
+      "category": "secret",
+      "text": "Який твій талант заслуговує більше місця в житті?",
+      "version": 1
+    },
+    {
+      "id": "secret-24",
+      "category": "secret",
+      "text": "Про який дім ти мрієш, якщо описувати лише відчуття?",
+      "version": 1
+    },
+    {
+      "id": "secret-25",
+      "category": "secret",
+      "text": "Яку власну традицію ти хотів(-ла) б колись передати далі?",
+      "version": 1
+    },
+    {
+      "id": "secret-26",
+      "category": "secret",
+      "text": "Яка несподівана тема пробуджує в тобі дослідника?",
+      "version": 1
+    },
+    {
+      "id": "secret-27",
+      "category": "secret",
+      "text": "Що ти зробив(-ла) б у день, повністю присвячений цікавості?",
+      "version": 1
+    },
+    {
+      "id": "secret-28",
+      "category": "secret",
+      "text": "Яку свою зміну за останній рік ти хотів(-ла) б відсвяткувати?",
+      "version": 1
+    },
+    {
+      "id": "secret-29",
+      "category": "secret",
+      "text": "Яке побажання собі ти досі соромишся сказати вголос?",
+      "version": 1
+    },
+    {
+      "id": "secret-30",
+      "category": "secret",
+      "text": "Яку невелику мрію нам було б приємно підтримати одне в одному?",
+      "version": 1
+    }
+  ],
+  "questionnaires": [
+    {
+      "id": "care",
+      "title": "Мова любові",
+      "version": 1,
+      "questions": [
+        {
+          "id": "care-01",
+          "text": "Мені важливі конкретні слова вдячності.",
+          "type": "scale",
+          "topic": "care",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "care-02",
+          "text": "Спільний час без екранів допомагає мені відчути турботу.",
+          "type": "scale",
+          "topic": "care",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "care-03",
+          "text": "Маленькі доречні подарунки мають для мене значення.",
+          "type": "scale",
+          "topic": "care",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "care-04",
+          "text": "Допомога зі справою може бути проявом ніжності.",
+          "type": "scale",
+          "topic": "care",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "care-05",
+          "text": "Мені важливо, щоб перед обіймами враховували мій настрій.",
+          "type": "scale",
+          "topic": "care",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "care-06",
+          "text": "Я люблю самостійно пояснювати, яка турбота потрібна сьогодні.",
+          "type": "scale",
+          "topic": "care",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "care-07",
+          "text": "Регулярні короткі знаки уваги для мене цінні.",
+          "type": "scale",
+          "topic": "care",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "care-08",
+          "text": "Мені приємно, коли пам’ятають мої дрібні вподобання.",
+          "type": "scale",
+          "topic": "care",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "care-09",
+          "text": "Який прояв турботи ти обрав(-ла) б після складного дня?",
+          "type": "choice",
+          "topic": "care",
+          "options": [
+            {
+              "id": "talk",
+              "label": "Розмова та уважне слухання",
+              "meaning": "dialogue"
+            },
+            {
+              "id": "time",
+              "label": "Спокійний час поруч",
+              "meaning": "presence"
+            },
+            {
+              "id": "plan",
+              "label": "Конкретна домовленість або допомога",
+              "meaning": "action"
+            }
+          ],
+          "rule": "semantic-equality"
+        },
+        {
+          "id": "care-10",
+          "text": "Що тобі найважливіше в несподіваному знаку уваги?",
+          "type": "priority",
+          "topic": "care",
+          "options": [
+            {
+              "id": "talk",
+              "label": "Розмова та уважне слухання",
+              "meaning": "dialogue"
+            },
+            {
+              "id": "time",
+              "label": "Спокійний час поруч",
+              "meaning": "presence"
+            },
+            {
+              "id": "plan",
+              "label": "Конкретна домовленість або допомога",
+              "meaning": "action"
+            }
+          ],
+          "rule": "semantic-equality"
+        }
+      ]
+    },
+    {
+      "id": "talk",
+      "title": "Спілкування",
+      "version": 1,
+      "questions": [
+        {
+          "id": "talk-01",
+          "text": "Мені легше обговорювати складне в заздалегідь обраний час.",
+          "type": "scale",
+          "topic": "talk",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "talk-02",
+          "text": "Мені потрібно подумати перед відповіддю про почуття.",
+          "type": "scale",
+          "topic": "talk",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "talk-03",
+          "text": "Я ціную уточнення замість здогадок про мій настрій.",
+          "type": "scale",
+          "topic": "talk",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "talk-04",
+          "text": "Письмове повідомлення допомагає мені почати складну тему.",
+          "type": "scale",
+          "topic": "talk",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "talk-05",
+          "text": "Під час розмови мені важливо не перебивати одне одного.",
+          "type": "scale",
+          "topic": "talk",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "talk-06",
+          "text": "Я хочу чути запитання перед порадою.",
+          "type": "scale",
+          "topic": "talk",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "talk-07",
+          "text": "Мені зручно називати потребу прямо.",
+          "type": "scale",
+          "topic": "talk",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "talk-08",
+          "text": "Я люблю підсумовувати, про що ми домовилися.",
+          "type": "scale",
+          "topic": "talk",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "talk-09",
+          "text": "Як ти волієш почати непросту розмову?",
+          "type": "choice",
+          "topic": "talk",
+          "options": [
+            {
+              "id": "talk",
+              "label": "Розмова та уважне слухання",
+              "meaning": "dialogue"
+            },
+            {
+              "id": "time",
+              "label": "Спокійний час поруч",
+              "meaning": "presence"
+            },
+            {
+              "id": "plan",
+              "label": "Конкретна домовленість або допомога",
+              "meaning": "action"
+            }
+          ],
+          "rule": "semantic-equality"
+        },
+        {
+          "id": "talk-10",
+          "text": "Що найважливіше, коли тебе слухають?",
+          "type": "priority",
+          "topic": "talk",
+          "options": [
+            {
+              "id": "talk",
+              "label": "Розмова та уважне слухання",
+              "meaning": "dialogue"
+            },
+            {
+              "id": "time",
+              "label": "Спокійний час поруч",
+              "meaning": "presence"
+            },
+            {
+              "id": "plan",
+              "label": "Конкретна домовленість або допомога",
+              "meaning": "action"
+            }
+          ],
+          "rule": "semantic-equality"
+        }
+      ]
+    },
+    {
+      "id": "boundaries",
+      "title": "Особисті кордони",
+      "version": 1,
+      "questions": [
+        {
+          "id": "boundaries-01",
+          "text": "Час наодинці допомагає мені відновлюватися.",
+          "type": "scale",
+          "topic": "boundaries",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "boundaries-02",
+          "text": "Я хочу самостійно вирішувати, чим ділитися з телефона.",
+          "type": "scale",
+          "topic": "boundaries",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "boundaries-03",
+          "text": "Мені важливо зберігати власні дружні зв’язки.",
+          "type": "scale",
+          "topic": "boundaries",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "boundaries-04",
+          "text": "Я ціную попередню домовленість про гостей.",
+          "type": "scale",
+          "topic": "boundaries",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "boundaries-05",
+          "text": "Мені потрібно мати право передумати.",
+          "type": "scale",
+          "topic": "boundaries",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "boundaries-06",
+          "text": "Я хочу окремо погоджувати публікацію наших фото.",
+          "type": "scale",
+          "topic": "boundaries",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "boundaries-07",
+          "text": "Я люблю обговорювати межі без необхідності виправдовуватися.",
+          "type": "scale",
+          "topic": "boundaries",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "boundaries-08",
+          "text": "Приватний щоденник має залишатися приватним.",
+          "type": "scale",
+          "topic": "boundaries",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "boundaries-09",
+          "text": "Як зручніше повідомити про потребу в особистому просторі?",
+          "type": "choice",
+          "topic": "boundaries",
+          "options": [
+            {
+              "id": "talk",
+              "label": "Розмова та уважне слухання",
+              "meaning": "dialogue"
+            },
+            {
+              "id": "time",
+              "label": "Спокійний час поруч",
+              "meaning": "presence"
+            },
+            {
+              "id": "plan",
+              "label": "Конкретна домовленість або допомога",
+              "meaning": "action"
+            }
+          ],
+          "rule": "semantic-equality"
+        },
+        {
+          "id": "boundaries-10",
+          "text": "Яка умова найважливіша для відчуття поваги до меж?",
+          "type": "priority",
+          "topic": "boundaries",
+          "options": [
+            {
+              "id": "talk",
+              "label": "Розмова та уважне слухання",
+              "meaning": "dialogue"
+            },
+            {
+              "id": "time",
+              "label": "Спокійний час поруч",
+              "meaning": "presence"
+            },
+            {
+              "id": "plan",
+              "label": "Конкретна домовленість або допомога",
+              "meaning": "action"
+            }
+          ],
+          "rule": "semantic-equality"
+        }
+      ]
+    },
+    {
+      "id": "conflict",
+      "title": "Конфлікти та примирення",
+      "version": 1,
+      "questions": [
+        {
+          "id": "conflict-01",
+          "text": "Пауза допомагає мені не говорити зопалу.",
+          "type": "scale",
+          "topic": "conflict",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "conflict-02",
+          "text": "Мені важливо знати, коли ми повернемося до розмови.",
+          "type": "scale",
+          "topic": "conflict",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "conflict-03",
+          "text": "Я ціную вибачення з конкретним визнанням вчинку.",
+          "type": "scale",
+          "topic": "conflict",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "conflict-04",
+          "text": "Мені легше говорити про одну проблему за раз.",
+          "type": "scale",
+          "topic": "conflict",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "conflict-05",
+          "text": "Я хочу відрізняти незгоду від неповаги.",
+          "type": "scale",
+          "topic": "conflict",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "conflict-06",
+          "text": "Після суперечки мені потрібен час на відновлення.",
+          "type": "scale",
+          "topic": "conflict",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "conflict-07",
+          "text": "Я ціную спільний пошук рішення без переможця.",
+          "type": "scale",
+          "topic": "conflict",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "conflict-08",
+          "text": "Мені допомагає спокійний тон навіть за різних поглядів.",
+          "type": "scale",
+          "topic": "conflict",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "conflict-09",
+          "text": "Що допомагає повернутися до розмови після паузи?",
+          "type": "choice",
+          "topic": "conflict",
+          "options": [
+            {
+              "id": "talk",
+              "label": "Розмова та уважне слухання",
+              "meaning": "dialogue"
+            },
+            {
+              "id": "time",
+              "label": "Спокійний час поруч",
+              "meaning": "presence"
+            },
+            {
+              "id": "plan",
+              "label": "Конкретна домовленість або допомога",
+              "meaning": "action"
+            }
+          ],
+          "rule": "semantic-equality"
+        },
+        {
+          "id": "conflict-10",
+          "text": "Який крок примирення для тебе найважливіший?",
+          "type": "priority",
+          "topic": "conflict",
+          "options": [
+            {
+              "id": "talk",
+              "label": "Розмова та уважне слухання",
+              "meaning": "dialogue"
+            },
+            {
+              "id": "time",
+              "label": "Спокійний час поруч",
+              "meaning": "presence"
+            },
+            {
+              "id": "plan",
+              "label": "Конкретна домовленість або допомога",
+              "meaning": "action"
+            }
+          ],
+          "rule": "semantic-equality"
+        }
+      ]
+    },
+    {
+      "id": "future",
+      "title": "Спільне майбутнє",
+      "version": 1,
+      "questions": [
+        {
+          "id": "future-01",
+          "text": "Я люблю обговорювати плани на кілька років.",
+          "type": "scale",
+          "topic": "future",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "future-02",
+          "text": "Мені важливо залишати в планах місце для змін.",
+          "type": "scale",
+          "topic": "future",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "future-03",
+          "text": "Я хочу узгоджувати великі витрати заздалегідь.",
+          "type": "scale",
+          "topic": "future",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "future-04",
+          "text": "Власний розвиток має залишатися частиною спільних планів.",
+          "type": "scale",
+          "topic": "future",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "future-05",
+          "text": "Мені цікаво час від часу переглядати наші пріоритети.",
+          "type": "scale",
+          "topic": "future",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "future-06",
+          "text": "Я ціную маленькі здійсненні кроки до мрії.",
+          "type": "scale",
+          "topic": "future",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "future-07",
+          "text": "Мені важливо відкрито говорити про невизначеність.",
+          "type": "scale",
+          "topic": "future",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "future-08",
+          "text": "Я хочу розрізняти власну мрію і спільну домовленість.",
+          "type": "scale",
+          "topic": "future",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "future-09",
+          "text": "Як тобі зручніше починати планування?",
+          "type": "choice",
+          "topic": "future",
+          "options": [
+            {
+              "id": "talk",
+              "label": "Розмова та уважне слухання",
+              "meaning": "dialogue"
+            },
+            {
+              "id": "time",
+              "label": "Спокійний час поруч",
+              "meaning": "presence"
+            },
+            {
+              "id": "plan",
+              "label": "Конкретна домовленість або допомога",
+              "meaning": "action"
+            }
+          ],
+          "rule": "semantic-equality"
+        },
+        {
+          "id": "future-10",
+          "text": "Що важливіше на першому етапі спільної мрії?",
+          "type": "priority",
+          "topic": "future",
+          "options": [
+            {
+              "id": "talk",
+              "label": "Розмова та уважне слухання",
+              "meaning": "dialogue"
+            },
+            {
+              "id": "time",
+              "label": "Спокійний час поруч",
+              "meaning": "presence"
+            },
+            {
+              "id": "plan",
+              "label": "Конкретна домовленість або допомога",
+              "meaning": "action"
+            }
+          ],
+          "rule": "semantic-equality"
+        }
+      ]
+    },
+    {
+      "id": "home",
+      "title": "Побут та відповідальність",
+      "version": 1,
+      "questions": [
+        {
+          "id": "home-01",
+          "text": "Я хочу бачити весь обсяг домашньої роботи, включно з плануванням.",
+          "type": "scale",
+          "topic": "home",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "home-02",
+          "text": "Мені важливо переглядати розподіл справ при зміні навантаження.",
+          "type": "scale",
+          "topic": "home",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "home-03",
+          "text": "Я ціную чіткі домовленості про регулярні справи.",
+          "type": "scale",
+          "topic": "home",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "home-04",
+          "text": "Для мене припустимі різні способи виконати одну справу.",
+          "type": "scale",
+          "topic": "home",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "home-05",
+          "text": "Мені легше просити допомоги до перевтоми.",
+          "type": "scale",
+          "topic": "home",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "home-06",
+          "text": "Я хочу обговорювати стандарти порядку без сорому.",
+          "type": "scale",
+          "topic": "home",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "home-07",
+          "text": "Відпочинок обох має враховуватися в розподілі справ.",
+          "type": "scale",
+          "topic": "home",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "home-08",
+          "text": "Мені важливо не вважати побутову допомогу боргом.",
+          "type": "scale",
+          "topic": "home",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "home-09",
+          "text": "Як краще помітити, що розподіл справ потребує змін?",
+          "type": "choice",
+          "topic": "home",
+          "options": [
+            {
+              "id": "talk",
+              "label": "Розмова та уважне слухання",
+              "meaning": "dialogue"
+            },
+            {
+              "id": "time",
+              "label": "Спокійний час поруч",
+              "meaning": "presence"
+            },
+            {
+              "id": "plan",
+              "label": "Конкретна домовленість або допомога",
+              "meaning": "action"
+            }
+          ],
+          "rule": "semantic-equality"
+        },
+        {
+          "id": "home-10",
+          "text": "Що головне у спільній побутовій домовленості?",
+          "type": "priority",
+          "topic": "home",
+          "options": [
+            {
+              "id": "talk",
+              "label": "Розмова та уважне слухання",
+              "meaning": "dialogue"
+            },
+            {
+              "id": "time",
+              "label": "Спокійний час поруч",
+              "meaning": "presence"
+            },
+            {
+              "id": "plan",
+              "label": "Конкретна домовленість або допомога",
+              "meaning": "action"
+            }
+          ],
+          "rule": "semantic-equality"
+        }
+      ]
+    },
+    {
+      "id": "support",
+      "title": "Емоційна підтримка",
+      "version": 1,
+      "questions": [
+        {
+          "id": "support-01",
+          "text": "У складний момент мені корисне уважне слухання.",
+          "type": "scale",
+          "topic": "support",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "support-02",
+          "text": "Іноді я потребую присутності без розмов.",
+          "type": "scale",
+          "topic": "support",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "support-03",
+          "text": "Я хочу самостійно обирати, коли обговорювати переживання.",
+          "type": "scale",
+          "topic": "support",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "support-04",
+          "text": "Практична допомога може полегшити мій день.",
+          "type": "scale",
+          "topic": "support",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "support-05",
+          "text": "Мені важливо чути, що мої почуття не оцінюють.",
+          "type": "scale",
+          "topic": "support",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "support-06",
+          "text": "Я ціную запитання про бажаний вид підтримки.",
+          "type": "scale",
+          "topic": "support",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "support-07",
+          "text": "Мені допомагає нагадування про можливість відпочити.",
+          "type": "scale",
+          "topic": "support",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "support-08",
+          "text": "Я хочу мати право не пояснювати свій настрій.",
+          "type": "scale",
+          "topic": "support",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "support-09",
+          "text": "Якої підтримки ти частіше хочеш після виснажливого дня?",
+          "type": "choice",
+          "topic": "support",
+          "options": [
+            {
+              "id": "talk",
+              "label": "Розмова та уважне слухання",
+              "meaning": "dialogue"
+            },
+            {
+              "id": "time",
+              "label": "Спокійний час поруч",
+              "meaning": "presence"
+            },
+            {
+              "id": "plan",
+              "label": "Конкретна домовленість або допомога",
+              "meaning": "action"
+            }
+          ],
+          "rule": "semantic-equality"
+        },
+        {
+          "id": "support-10",
+          "text": "Що найважливіше в підтримувальній розмові?",
+          "type": "priority",
+          "topic": "support",
+          "options": [
+            {
+              "id": "talk",
+              "label": "Розмова та уважне слухання",
+              "meaning": "dialogue"
+            },
+            {
+              "id": "time",
+              "label": "Спокійний час поруч",
+              "meaning": "presence"
+            },
+            {
+              "id": "plan",
+              "label": "Конкретна домовленість або допомога",
+              "meaning": "action"
+            }
+          ],
+          "rule": "semantic-equality"
+        }
+      ]
+    },
+    {
+      "id": "romance",
+      "title": "Близькість та романтика",
+      "version": 1,
+      "questions": [
+        {
+          "id": "romance-01",
+          "text": "Мені приємно заздалегідь знати про романтичний план.",
+          "type": "scale",
+          "topic": "romance",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "romance-02",
+          "text": "Я ціную можливість відмовитися від дотику без образ.",
+          "type": "scale",
+          "topic": "romance",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "romance-03",
+          "text": "Мені важливо обговорювати комфорт словами.",
+          "type": "scale",
+          "topic": "romance",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "romance-04",
+          "text": "Романтика для мене можлива без фізичної близькості.",
+          "type": "scale",
+          "topic": "romance",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "romance-05",
+          "text": "Я люблю час від часу пробувати новий формат побачення.",
+          "type": "scale",
+          "topic": "romance",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "romance-06",
+          "text": "Мені потрібне право змінювати вподобання.",
+          "type": "scale",
+          "topic": "romance",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "romance-07",
+          "text": "Мені приємні маленькі знаки флірту у звичайний день.",
+          "type": "scale",
+          "topic": "romance",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "romance-08",
+          "text": "Я хочу відрізняти розмову про бажання від згоди на дію.",
+          "type": "scale",
+          "topic": "romance",
+          "options": [],
+          "rule": "distance-1-5"
+        },
+        {
+          "id": "romance-09",
+          "text": "Який формат романтичного часу тобі зараз ближчий?",
+          "type": "choice",
+          "topic": "romance",
+          "options": [
+            {
+              "id": "talk",
+              "label": "Розмова та уважне слухання",
+              "meaning": "dialogue"
+            },
+            {
+              "id": "time",
+              "label": "Спокійний час поруч",
+              "meaning": "presence"
+            },
+            {
+              "id": "plan",
+              "label": "Конкретна домовленість або допомога",
+              "meaning": "action"
+            }
+          ],
+          "rule": "semantic-equality"
+        },
+        {
+          "id": "romance-10",
+          "text": "Що найважливіше для комфортного зближення?",
+          "type": "priority",
+          "topic": "romance",
+          "options": [
+            {
+              "id": "talk",
+              "label": "Розмова та уважне слухання",
+              "meaning": "dialogue"
+            },
+            {
+              "id": "time",
+              "label": "Спокійний час поруч",
+              "meaning": "presence"
+            },
+            {
+              "id": "plan",
+              "label": "Конкретна домовленість або допомога",
+              "meaning": "action"
+            }
+          ],
+          "rule": "semantic-equality"
+        }
+      ]
+    }
+  ]
+}

@@ -55,3 +55,9 @@ npm run preview -- --host 0.0.0.0
 SDK намеренно не установлены. После выбора iOS/Android реализуйте `PlatformAdapter`, добавьте платформенные проекты и их lifecycle/safe-area настройки в отдельной задаче. Для RevenueCat реализуйте `BillingAdapter` только после определения платформ, продуктов и entitlements. Покупки и restore требуют нативных тестов, а выдача доступа — серверной проверки/webhooks. Coins не являются денежным балансом и не связаны с подписками. Текущий `billing = null` означает отсутствие платёжной возможности.
 
 Для дополнительной мобильной проверки demo UI в системном Chromium: запустите production preview и `npm run test:ritual-browser`. Проверяются две ширины и обе темы, без облачных аккаунтов. Подробности — [docs/couple-rituals.md](docs/couple-rituals.md).
+
+## Емоційна близькість (етап 8)
+
+У «Сегодня» — необов’язковий український check-in, у «Мы» — «Пізнаємо одне одного»: власний настрій, вісім авторських опитувань і спільна гра «Між нами» на 150 запитань. П’ять основних вкладок збережено. Без XP/Coins, діагностики чи зовнішнього AI. Чернетки приватні, розкриття потребує явної згоди й завершення обома. Без Supabase — лише read-only оформлення.
+
+Документація: [настрій](docs/emotional-checkin.md), [опитування](docs/couple-questionnaires.md), [гра, RPC, приватність і розгортання](docs/between-us-card-game.md). Нова pending-міграція: `supabase/migrations/20261022120000_emotional_connection.sql`; автоматично remote не застосовується. `npm run check:connection-catalog` перевіряє JSON/SQL seed; опційні локальні Chromium checks: `npm run test:connection-browser` і `npm run test:connection-accounts -- /tmp/OWN-local-status.json http://127.0.0.1:4174` (інструкції в документації гри).
