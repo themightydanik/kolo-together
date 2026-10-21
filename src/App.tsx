@@ -1,3 +1,4 @@
+import { DemoRituals } from './features/rituals/screens'
 import { DemoStatistics } from './features/statistics/screens'
 import { useState } from 'react'
 import {
@@ -258,7 +259,15 @@ function DemoWorkspace() {
     )
   return (
     <Routes>
-      <Route path="/" element={<Dashboard tasks={tasks} toggle={toggle} />} />
+      <Route
+        path="/"
+        element={
+          <>
+            <Dashboard tasks={tasks} toggle={toggle} />
+            <DemoRituals />
+          </>
+        }
+      />
       <Route
         path="/tasks"
         element={
@@ -276,6 +285,7 @@ function DemoWorkspace() {
         element={
           <div className="space-y-5">
             <DemoStatistics />
+            <DemoRituals />
             <Card>
               <div className="mb-5 flex gap-2">
                 <span className="avatar">А</span>

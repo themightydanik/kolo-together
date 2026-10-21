@@ -58,6 +58,10 @@ before(async () => {
       await complete(90, (await instance(historical)).id)
     }
     await pool.query(await readFile('supabase/migrations/' + name, 'utf8'))
+    if (name === '20261021120000_couple_rituals.sql') {
+      assert.deepEqual(await progress(90),{xp:20,coins:10},'ritual migration preserves existing historical progress')
+      assert.equal((await statistics(90)).personal.tasks,1)
+    }
     if (name === '20261020120000_achievements_statistics.sql') {
       const historical = (await asUser(90,'select public.get_statistics() as data'))[0].data
       assert.equal(historical.personal.tasks,1,'pre-migration completions count without reward backfill')
@@ -2975,4 +2979,711 @@ test('review: protected totals, raw facts, cursor filters and acknowledgement ro
   await pool.query(
     await readFile('supabase/tests/statistics-privileges.sql', 'utf8'),
   )
+})
+
+// Stage 7: rituals are separate from economy and all times are server UTC.
+const ritualTerms = (options = {}) => ({
+  title: 'Совместный чай',
+  description: 'Если хочется обоим',
+  emoji: '☕',
+  cadence: 'daily',
+  days: [1, 2, 3, 4, 5, 6, 7],
+  ...options,
+})
+const ritualList = async (n, filter = 'active', cursor = null, limit = 20) =>
+  (
+    await asUser(n, 'select public.list_couple_rituals($1,$2,$3) as data', [
+      filter,
+      cursor,
+      limit,
+    ])
+  )[0].data
+const ritualCreate = async (
+  n,
+  terms = ritualTerms(),
+  key = randomUUID(),
+  expected = null,
+) => {
+  const version = expected ?? (await ritualList(n)).create_version
+  return (
+    await asUser(n, 'select public.create_couple_ritual($1,$2,$3) as id', [
+      key,
+      terms,
+      version,
+    ])
+  )[0].id
+}
+const ritualChange = async (
+  n,
+  id,
+  kind,
+  terms = {},
+  key = randomUUID(),
+  expected = null,
+) => {
+  const version =
+    expected ??
+    (
+      await asUser(
+        n,
+        'select count(*)::integer n from public.ritual_consents where ritual_id=$1 and requester_id=$2',
+        [id, uid(n)],
+      )
+    )[0].n
+  return (
+    await asUser(
+      n,
+      'select public.propose_ritual_change($1,$2,$3,$4,$5) as id',
+      [id, key, kind, terms, version],
+    )
+  )[0].id
+}
+const ritualDecision = (n, id, decision = 'accept') =>
+  asUser(n, 'select public.resolve_ritual_consent($1,$2)', [id, decision])
+const ritualPending = async (id) =>
+  (
+    await pool.query(
+      "select id from public.ritual_consents where ritual_id=$1 and status='pending'",
+      [id],
+    )
+  ).rows[0]?.id
+const ritualInstance = async (id) =>
+  (
+    await pool.query(
+      'select * from public.ritual_instances where ritual_id=$1 order by scheduled_on desc',
+      [id],
+    )
+  ).rows[0]
+const ritualMark = (n, id) =>
+  asUser(n, 'select public.complete_ritual_instance($1)', [id])
+const ritualRefresh = (n) =>
+  asUser(n, 'select public.refresh_ritual_instances()')
+const ritualSummary = async (n) =>
+  (await asUser(n, 'select public.get_ritual_summary() as data'))[0].data
+const ritualHistory = async (n, cursor = null, limit = 20) =>
+  (
+    await asUser(n, 'select public.list_ritual_history($1,$2) as data', [
+      cursor,
+      limit,
+    ])
+  )[0].data
+async function activeRitual(terms = ritualTerms()) {
+  const id = await ritualCreate(1, terms)
+  await ritualDecision(2, await ritualPending(id))
+  return id
+}
+async function ritualClock(value) {
+  assert.match(value, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/)
+  await pool.query(
+    `create or replace function public.ritual_clock() returns timestamptz language sql volatile set search_path='' as $$select '${value}'::timestamptz$$`,
+  )
+}
+const resetRitualClock = () =>
+  pool.query(
+    "create or replace function public.ritual_clock() returns timestamptz language sql volatile set search_path='' as $$select clock_timestamp()$$",
+  )
+
+test('ritual creation is voluntary, validates terms, requires verified pair and exact original replay even after edits', async () => {
+  await create(1)
+  await assert.rejects(ritualCreate(1), /partner_required/)
+  await resolve(2, await invite(1, 2))
+  for (const terms of [
+    null,
+    [],
+    {},
+    ritualTerms({ title: 'x' }),
+    ritualTerms({ title: 'x'.repeat(101) }),
+    ritualTerms({ description: 'x'.repeat(1001) }),
+    ritualTerms({ emoji: '<img>' }),
+    ritualTerms({ days: [] }),
+    ritualTerms({ days: [1, 1] }),
+    ritualTerms({ days: ['1'] }),
+    ritualTerms({ cadence: 'weekly', days: [1, 2] }),
+    ritualTerms({ cadence: 'daily', days: [1] }),
+    { ...ritualTerms(), user_id: uid(2) },
+  ])
+    await assert.rejects(ritualCreate(1, terms), /invalid_ritual/)
+  const key = randomUUID(),
+    terms = ritualTerms()
+  const ids = await Promise.all([
+    ritualCreate(1, terms, key, 0),
+    ritualCreate(1, terms, key, 0),
+  ])
+  assert.equal(ids[0], ids[1])
+  assert.equal(await ritualInstance(ids[0]), undefined)
+  await assert.rejects(
+    ritualDecision(1, await ritualPending(ids[0])),
+    /ritual_transition_denied/,
+  )
+  await ritualDecision(2, await ritualPending(ids[0]))
+  assert.ok(await ritualInstance(ids[0]))
+  const change = await ritualChange(
+    2,
+    ids[0],
+    'edit',
+    ritualTerms({ title: 'Новый чай' }),
+  )
+  await ritualDecision(1, change)
+  assert.equal(await ritualCreate(1, terms, key, 0), ids[0])
+  await assert.rejects(
+    ritualCreate(1, ritualTerms({ title: 'Другие условия' }), key),
+    /ritual_request_conflict/,
+  )
+  await assert.rejects(
+    asUser(8, 'select public.create_couple_ritual($1,$2,0)', [
+      randomUUID(),
+      terms,
+    ]),
+    /verified_account_required/,
+  )
+})
+test('ritual decline, pending withdrawal and unilateral participation withdrawal cost nothing and preserve history', async () => {
+  await pair()
+  const before = await progress(1)
+  const declined = await ritualCreate(1)
+  await ritualDecision(2, await ritualPending(declined), 'decline')
+  assert.equal((await ritualList(1, 'closed')).rituals[0].status, 'declined')
+  assert.equal(await ritualInstance(declined), undefined)
+  const pending = await ritualCreate(2)
+  await ritualDecision(2, await ritualPending(pending), 'withdraw')
+  const id = await activeRitual(),
+    i = await ritualInstance(id)
+  await ritualMark(1, i.id)
+  await asUser(2, 'select public.withdraw_couple_ritual($1)', [id])
+  await asUser(2, 'select public.withdraw_couple_ritual($1)', [id])
+  assert.equal((await ritualInstance(id)).status, 'missed')
+  assert.equal(
+    (await asUser(1, 'select * from public.ritual_completions')).length,
+    1,
+  )
+  await assert.rejects(ritualMark(2, i.id), /ritual_period_unavailable/)
+  await assert.rejects(
+    ritualChange(1, id, 'resume'),
+    /ritual_transition_denied/,
+  )
+  assert.deepEqual(await progress(1), before)
+  assert.equal(
+    (await pool.query('select count(*) from public.reward_ledger')).rows[0]
+      .count,
+    '0',
+  )
+})
+test('two independent ritual marks, duplicate clicks and concurrent calls complete once without XP or Coins', async () => {
+  const space = await pair()
+  await earn(1)
+  const before = await progress(1),
+    stats = await statistics(1)
+  const id = await activeRitual(),
+    i = await ritualInstance(id)
+  await ritualMark(1, i.id)
+  assert.equal((await ritualInstance(id)).status, 'partial')
+  assert.equal((await ritualSummary(1)).completed, 0)
+  await Promise.all([
+    ritualMark(1, i.id),
+    ritualMark(2, i.id),
+    ritualMark(2, i.id),
+  ])
+  assert.equal((await ritualInstance(id)).status, 'completed')
+  assert.equal((await ritualSummary(2)).completed, 1)
+  assert.equal(
+    (await asUser(1, 'select * from public.ritual_completions')).length,
+    2,
+  )
+  assert.equal((await ritualHistory(1)).items.length, 1)
+  assert.deepEqual(await progress(1), before)
+  assert.deepEqual((await statistics(1)).personal, stats.personal)
+  assert.equal(
+    (
+      await pool.query(
+        'select count(*) from public.space_progress where space_id=$1',
+        [space],
+      )
+    ).rows[0].count,
+    '0',
+  )
+  assert.equal(
+    (await pool.query('select count(*) from public.goal_reward_ledger')).rows[0]
+      .count,
+    '0',
+  )
+  assert.equal(
+    (await pool.query('select count(*) from public.coin_transactions')).rows[0]
+      .count,
+    '1',
+  )
+})
+test('ritual edit/pause/resume/close require new consent, snapshot old marks, and start next UTC day', async () => {
+  await pair()
+  await ritualClock('2026-10-19T12:00:00Z')
+  try {
+    const id = await activeRitual(),
+      first = await ritualInstance(id)
+    await ritualMark(1, first.id)
+    const change = await ritualChange(
+      1,
+      id,
+      'edit',
+      ritualTerms({ title: 'Новый ритуал', cadence: 'weekdays', days: [2, 4] }),
+    )
+    await assert.rejects(ritualMark(2, first.id), /ritual_period_unavailable/)
+    await assert.rejects(ritualChange(2, id, 'pause'), /ritual_consent_pending/)
+    await ritualDecision(2, change)
+    assert.equal((await ritualInstance(id)).terms.title, 'Совместный чай')
+    assert.equal((await ritualInstance(id)).status, 'missed')
+    assert.equal((await ritualList(1)).rituals[0].starts_on, '2026-10-20')
+    await ritualClock('2026-10-20T10:00:00Z')
+    await ritualRefresh(1)
+    const second = await ritualInstance(id)
+    assert.notEqual(second.id, first.id)
+    assert.equal(second.terms.title, 'Новый ритуал')
+    const pause = await ritualChange(2, id, 'pause')
+    await ritualDecision(1, pause, 'decline')
+    assert.equal((await ritualList(1)).rituals[0].status, 'active')
+    await ritualDecision(1, await ritualChange(2, id, 'pause'))
+    assert.equal((await ritualList(1, 'paused')).rituals.length, 1)
+    await ritualDecision(2, await ritualChange(1, id, 'resume'))
+    await ritualRefresh(2)
+    assert.equal(
+      (
+        await pool.query(
+          'select count(*) from public.ritual_instances where ritual_id=$1',
+          [id],
+        )
+      ).rows[0].count,
+      '2',
+    )
+    await ritualClock('2026-10-22T10:00:00Z')
+    await ritualRefresh(1)
+    const third = await ritualInstance(id)
+    await Promise.all([ritualMark(1, third.id), ritualMark(2, third.id)])
+    await ritualDecision(2, await ritualChange(1, id, 'close'))
+    assert.equal((await ritualInstance(id)).status, 'completed')
+    assert.equal((await ritualSummary(1)).completed, 1)
+  } finally {
+    await resetRitualClock()
+  }
+})
+test('ritual daily and weekly UTC rollover never backfills, never combines marks or creates two weekly instances', async () => {
+  await pair()
+  await ritualClock('2026-10-19T23:59:59Z')
+  try {
+    const daily = await activeRitual()
+    const yesterday = await ritualInstance(daily)
+    await ritualMark(1, yesterday.id)
+    await ritualClock('2026-10-20T00:00:00Z')
+    await assert.rejects(
+      ritualMark(2, yesterday.id),
+      /ritual_period_unavailable/,
+    )
+    await Promise.all([ritualRefresh(1), ritualRefresh(2)])
+    assert.equal(
+      (
+        await pool.query(
+          'select status from public.ritual_instances where id=$1',
+          [yesterday.id],
+        )
+      ).rows[0].status,
+      'missed',
+    )
+    const today = await ritualInstance(daily)
+    await ritualMark(2, today.id)
+    assert.equal((await ritualInstance(daily)).status, 'partial')
+    await ritualClock('2026-10-25T12:00:00Z')
+    await ritualRefresh(1)
+    assert.equal(
+      (
+        await pool.query(
+          'select count(*) from public.ritual_instances where ritual_id=$1',
+          [daily],
+        )
+      ).rows[0].count,
+      '3',
+    )
+    await ritualClock('2026-10-19T10:00:00Z')
+    const weekly = await activeRitual(
+      ritualTerms({ cadence: 'weekly', days: [3] }),
+    )
+    assert.equal(await ritualInstance(weekly), undefined)
+    await ritualClock('2026-10-21T23:59:59Z')
+    await ritualRefresh(2)
+    const w = await ritualInstance(weekly)
+    assert.equal(w.period_key, 'w:2026-10-19')
+    await ritualMark(1, w.id)
+    await ritualClock('2026-10-22T00:00:00Z')
+    await assert.rejects(ritualMark(2, w.id), /ritual_period_unavailable/)
+    await ritualDecision(
+      2,
+      await ritualChange(
+        1,
+        weekly,
+        'edit',
+        ritualTerms({ cadence: 'weekly', days: [5] }),
+      ),
+    )
+    await ritualClock('2026-10-23T12:00:00Z')
+    await asUser(1,"set local datestyle = 'German, DMY'; select public.refresh_ritual_instances()")
+    await ritualRefresh(1)
+    assert.equal(
+      (
+        await pool.query(
+          'select count(*) from public.ritual_instances where ritual_id=$1',
+          [weekly],
+        )
+      ).rows[0].count,
+      '1',
+    )
+    await ritualClock('2026-10-30T12:00:00Z')
+    await ritualRefresh(1)
+    assert.equal((await ritualInstance(weekly)).period_key, 'w:2026-10-26')
+    await ritualClock('2026-12-31T12:00:00Z')
+    const year = await activeRitual(
+      ritualTerms({ cadence: 'weekly', days: [4] }),
+    )
+    assert.equal((await ritualInstance(year)).period_key, 'w:2026-12-28')
+    await ritualClock('2027-01-07T12:00:00Z')
+    await ritualRefresh(1)
+    assert.equal((await ritualInstance(year)).period_key, 'w:2027-01-04')
+  } finally {
+    await resetRitualClock()
+  }
+})
+test('ritual request fences preserve original intent and same-key replay never creates another change', async () => {
+  await pair()
+  const terms = ritualTerms(),
+    key = randomUUID()
+  const raw = (k) =>
+    asUser(1, 'select public.create_couple_ritual($1,$2,0) as id', [k, terms])
+  const creates = await Promise.allSettled([raw(key), raw(randomUUID())])
+  assert.equal(creates.filter((x) => x.status === 'fulfilled').length, 1)
+  const id = (await ritualList(1, 'pending')).rituals[0].id
+  await ritualDecision(2, await ritualPending(id))
+  const ckey = randomUUID(),
+    change = await ritualChange(1, id, 'pause', {}, ckey, 1)
+  await ritualDecision(2, change)
+  assert.equal(await ritualChange(1, id, 'pause', {}, ckey, 1), change)
+  await assert.rejects(
+    ritualChange(1, id, 'pause', {}, randomUUID(), 1),
+    /ritual_history_changed/,
+  )
+  const before = (
+    await pool.query('select count(*) from public.ritual_consents')
+  ).rows[0].count
+  assert.equal(
+    (
+      await asUser(1, 'select public.inspect_ritual_request($1,$2) as data', [
+        randomUUID(),
+        id,
+      ])
+    )[0].data,
+    null,
+  )
+  assert.equal(
+    (await pool.query('select count(*) from public.ritual_consents')).rows[0]
+      .count,
+    before,
+  )
+  await asUser(2, 'select public.withdraw_couple_ritual($1)', [id])
+  assert.equal(await ritualChange(1, id, 'pause', {}, ckey, 999), change)
+})
+test('ritual departure, old cursors and returning/new partner preserve facts but never reopen or reveal history', async () => {
+  await pair()
+  const done = await activeRitual()
+  const i = await ritualInstance(done)
+  await Promise.all([ritualMark(1, i.id), ritualMark(2, i.id)])
+  const active = await activeRitual()
+  await ritualMark(1, (await ritualInstance(active)).id)
+  await ritualChange(1, active, 'pause')
+  const page = await ritualList(1, 'active', null, 1)
+  assert.ok(page.next_cursor)
+  await asUser(2, 'select public.leave_couple_space()')
+  assert.equal((await ritualList(1, 'closed')).rituals.length, 0)
+  assert.equal((await ritualHistory(2)).items.length, 0)
+  assert.equal(
+    (await pool.query('select count(*) from public.ritual_completions')).rows[0]
+      .count,
+    '3',
+  )
+  await assert.rejects(
+    ritualList(1, 'active', page.next_cursor),
+    /invalid_ritual_cursor/,
+  )
+  await resolve(3, await invite(1, 3))
+  for (const table of [
+    'couple_rituals',
+    'ritual_consents',
+    'ritual_instances',
+    'ritual_completions',
+  ])
+    assert.equal((await asUser(3, `select * from public.${table}`)).length, 0)
+  assert.equal((await ritualSummary(3)).completed, 0)
+  assert.equal((await ritualHistory(1)).items.length, 0)
+  await assert.rejects(ritualMark(3, i.id), /ritual_unavailable/)
+  await asUser(3, 'select public.leave_couple_space()')
+  await resolve(2, await invite(1, 2))
+  assert.equal((await ritualSummary(2)).completed, 1)
+  assert.equal((await ritualList(2, 'closed')).rituals.length, 2)
+  await assert.rejects(
+    ritualChange(2, active, 'resume'),
+    /ritual_transition_denied/,
+  )
+  await assert.rejects(
+    ritualList(1, 'active', page.next_cursor),
+    /invalid_ritual_cursor/,
+  )
+})
+test('ritual RLS, fixed search_path and exact RPC grants forbid all direct writes and marking for another member', async () => {
+  await pool.query(
+    await readFile('supabase/tests/ritual-privileges.sql', 'utf8'),
+  )
+  await pair()
+  await create(3)
+  const id = await activeRitual(),
+    i = await ritualInstance(id)
+  for (const table of [
+    'couple_rituals',
+    'ritual_consents',
+    'ritual_instances',
+    'ritual_completions',
+  ]) {
+    assert.equal((await asUser(3, `select * from public.${table}`)).length, 0)
+    await assert.rejects(
+      asUser(null, `select * from public.${table}`),
+      /permission denied/,
+    )
+    for (const verb of [
+      `delete from public.${table}`,
+      `truncate public.${table}`,
+    ])
+      await assert.rejects(asUser(1, verb), /permission denied/)
+  }
+  await assert.rejects(
+    asUser(
+      1,
+      'insert into public.ritual_completions(instance_id,user_id) values($1,$2)',
+      [i.id, uid(2)],
+    ),
+    /permission denied/,
+  )
+  await assert.rejects(
+    asUser(1, "update public.couple_rituals set status='active'"),
+    /permission denied/,
+  )
+  for (const call of [
+    'ritual_clock()',
+    'ritual_context()',
+    "validate_ritual_terms('{}')",
+    `lock_couple_ritual('${id}')`,
+    `materialize_ritual('${id}')`,
+  ])
+    await assert.rejects(
+      asUser(1, `select public.${call}`),
+      /permission denied/,
+    )
+  await assert.rejects(ritualMark(3, i.id), /ritual_unavailable/)
+  await ritualMark(1, i.id)
+  assert.deepEqual(
+    (await asUser(1, 'select user_id from public.ritual_completions')).map(
+      (r) => r.user_id,
+    ),
+    [uid(1)],
+  )
+})
+test('ritual pagination is bounded and actor/epoch bound for lists and history; summaries are UTC and own pair only', async () => {
+  await pair()
+  for (let i = 0; i < 5; i++) {
+    const id = await activeRitual(ritualTerms({ title: `Чай ${i}` })),
+      instance = await ritualInstance(id)
+    await Promise.all([ritualMark(1, instance.id), ritualMark(2, instance.id)])
+  }
+  let cursor = null
+  const seen = []
+  do {
+    const p = await ritualHistory(1, cursor, 2)
+    seen.push(...p.items)
+    cursor = p.next_cursor
+  } while (cursor)
+  assert.equal(seen.length, 5)
+  assert.equal(new Set(seen.map((i) => i.id)).size, 5)
+  const first = await ritualHistory(1, null, 2)
+  await assert.rejects(
+    ritualHistory(2, first.next_cursor),
+    /invalid_ritual_cursor/,
+  )
+  const page = await ritualList(1, 'active', null, 2)
+  assert.equal(page.rituals.length, 2)
+  await assert.rejects(
+    ritualList(2, 'active', page.next_cursor),
+    /invalid_ritual_cursor/,
+  )
+  await assert.rejects(
+    ritualList(1, 'paused', page.next_cursor),
+    /invalid_ritual_cursor/,
+  )
+  for (const c of [
+    {},
+    [],
+    { ...first.next_cursor, day: 'infinity' },
+    { ...first.next_cursor, until: 'invalid' },
+  ])
+    await assert.rejects(ritualHistory(1, c), /invalid_ritual_cursor/)
+  for (const limit of [0, 51, null])
+    await assert.rejects(ritualHistory(1, null, limit), /invalid_ritual_cursor/)
+  const summary = await ritualSummary(1)
+  assert.equal(summary.completed, 5)
+  assert.equal(summary.calendar.length, 30)
+  assert.equal(summary.timezone, 'UTC')
+  assert.equal((await ritualSummary(3)).completed, 0)
+})
+test('ritual completion and departure races leave only committed independent marks with no economic effects', async () => {
+  for (let run = 0; run < 4; run++) {
+    await pool.query('truncate auth.users cascade')
+    for (const n of [1, 2])
+      await pool.query('insert into auth.users values($1,$2,now())', [
+        uid(n),
+        `user${n}@example.test`,
+      ])
+    await pair()
+    const id = await activeRitual(),
+      i = await ritualInstance(id)
+    await ritualMark(1, i.id)
+    await Promise.allSettled([
+      ritualMark(2, i.id),
+      asUser(2, 'select public.leave_couple_space()'),
+    ])
+    const row = await ritualInstance(id),
+      marks = (
+        await pool.query(
+          'select count(*) n from public.ritual_completions where instance_id=$1',
+          [i.id],
+        )
+      ).rows[0].n
+    assert.ok(
+      (row.status === 'completed' && marks === '2') ||
+        (row.status === 'missed' && marks === '1'),
+    )
+    assert.equal(
+      (await pool.query('select count(*) from public.reward_ledger')).rows[0]
+        .count,
+      '0',
+    )
+  }
+})
+test('ritual COMMIT failure rolls back the second mark and completion, retry completes once', async () => {
+  await pair()
+  const id = await activeRitual(),
+    i = await ritualInstance(id)
+  await ritualMark(1, i.id)
+  await pool.query(`create function public.review_ritual_fail() returns trigger language plpgsql as $$begin if new.status='completed' then raise exception 'ritual_commit_failure'; end if; return new; end$$;
+ create constraint trigger review_ritual_fail after update on public.ritual_instances deferrable initially deferred for each row execute function public.review_ritual_fail()`)
+  try {
+    await assert.rejects(ritualMark(2, i.id), /ritual_commit_failure/)
+    assert.equal((await ritualInstance(id)).status, 'partial')
+    assert.equal(
+      (await pool.query('select count(*) from public.ritual_completions'))
+        .rows[0].count,
+      '1',
+    )
+  } finally {
+    await pool.query(
+      'drop trigger review_ritual_fail on public.ritual_instances; drop function public.review_ritual_fail()',
+    )
+  }
+  await ritualMark(2, i.id)
+  assert.equal((await ritualInstance(id)).status, 'completed')
+})
+test('ritual UTC time is sampled after lock waits, not at request start', async () => {
+  const space = await pair()
+  await pool.query(
+    "create table public.review_ritual_time(value timestamptz);insert into public.review_ritual_time values('2026-10-19T23:59:59Z');create or replace function public.ritual_clock() returns timestamptz language sql volatile set search_path='' as $$select value from public.review_ritual_time$$",
+  )
+  const blocker = await pool.connect()
+  try {
+    const id = await activeRitual(),
+      i = await ritualInstance(id)
+    await ritualMark(1, i.id)
+    await blocker.query('begin')
+    await blocker.query(
+      'select id from public.couple_spaces where id=$1 for update',
+      [space],
+    )
+    const waiting = ritualMark(2, i.id).then(
+      () => false,
+      (e) => e.message,
+    )
+    // Wait for an actual PostgreSQL lock wait, not an assumed wall-clock delay.
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if (
+        (
+          await pool.query(
+            "select 1 from pg_stat_activity where wait_event_type='Lock' and query like '%complete_ritual_instance%'",
+          )
+        ).rowCount
+      )
+        break
+      if (attempt === 99) throw Error('ritual call did not reach lock wait')
+      await new Promise((r) => setTimeout(r, 10))
+    }
+    await pool.query(
+      "update public.review_ritual_time set value='2026-10-20T00:00:00Z'",
+    )
+    await blocker.query('commit')
+    assert.match(await waiting, /ritual_period_unavailable/)
+    await Promise.all([ritualRefresh(1), ritualRefresh(2)])
+    assert.equal(
+      (
+        await pool.query(
+          'select count(*) from public.ritual_instances where ritual_id=$1',
+          [id],
+        )
+      ).rows[0].count,
+      '2',
+    )
+  } finally {
+    await blocker.query('rollback')
+    blocker.release()
+    await resetRitualClock()
+    await pool.query('drop table public.review_ritual_time')
+  }
+})
+test('ritual history index scopes a growing history to its space before paging', async (t) => {
+  const space = await pair(),
+    id = await activeRitual()
+  await pool.query(
+    `insert into public.ritual_instances(ritual_id,space_id,period_key,scheduled_on,version,terms,status,completed_at)
+ select r.id,r.space_id,'d:'||((now() at time zone 'UTC')::date-i)::text,(now() at time zone 'UTC')::date-i,r.version,r.terms,'completed',now()-i*interval '1 day'
+ from public.couple_rituals r cross join generate_series(1,3000) i where r.id=$1`,
+    [id],
+  )
+  await pool.query(
+    `insert into public.ritual_completions(instance_id,user_id,completed_at) select i.id,u,i.completed_at from public.ritual_instances i cross join unnest($2::uuid[]) u where ritual_id=$1 and status='completed'`,
+    [id, [uid(1), uid(2)]],
+  )
+  await pool.query('analyze public.ritual_instances')
+  const result = (
+    await pool.query(
+      "explain(analyze,format json) select id from public.ritual_instances where space_id=$1 and scheduled_on<(now() at time zone 'UTC')::date-2900 order by scheduled_on desc,id desc limit 21",
+      [space],
+    )
+  ).rows[0]['QUERY PLAN'][0]
+  assert.match(JSON.stringify(result), /ritual_instances_history/)
+  assert.equal(result.Plan['Actual Rows'], 21)
+  assert.equal((await ritualHistory(1)).items.length, 20)
+  assert.equal((await ritualSummary(1)).completed, 3000)
+  assert.equal((await ritualSummary(3)).completed, 0)
+  t.diagnostic(
+    `3000 ritual instances / 6000 marks: deep indexed history ${result['Execution Time']} ms`,
+  )
+})
+test('ritual open limit is enforced under concurrent creation and closing frees capacity without deleting history',async()=>{
+ await pair()
+ let first
+ for(let i=0;i<49;i++){const id=await ritualCreate(1,ritualTerms(),randomUUID(),i);if(i===0)first=id}
+ const raced=await Promise.allSettled([ritualCreate(1,ritualTerms(),randomUUID(),49),ritualCreate(2,ritualTerms(),randomUUID(),0)])
+ assert.equal(raced.filter(r=>r.status==='fulfilled').length,1)
+ assert.match(raced.find(r=>r.status==='rejected').reason.message,/ritual_limit/)
+ await asUser(2,'select public.withdraw_couple_ritual($1)',[first])
+ const fresh=await ritualCreate(2)
+ assert.ok(fresh)
+ assert.equal((await pool.query("select count(*) from public.couple_rituals where status in ('pending','active','paused')")).rows[0].count,'50')
+ assert.equal((await pool.query("select count(*) from public.couple_rituals where status='closed'")).rows[0].count,'1')
 })

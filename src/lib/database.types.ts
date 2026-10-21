@@ -1,9 +1,22 @@
 import type {
+  Ritual,
+  RitualConsent,
+  RitualInstance,
+  RitualTerms,
+  RitualKind,
+  RitualDecision,
+  RitualPage,
+  RitualCursor,
+  RitualHistory,
+  RitualHistoryCursor,
+  RitualSummary,
+} from '../features/rituals/model'
+import type {
   Statistics,
   HistoryPage,
   HistoryCursor,
 } from '../features/statistics/model'
-/** Schema snapshot through 20261020120000_achievements_statistics.sql.
+/** Schema snapshot through 20261021120000_couple_rituals.sql.
  * Refresh with Supabase CLI (see docs/supabase.md) and review the diff. */
 export type Profile = {
   id: string
@@ -280,6 +293,14 @@ type Table<Row, Insert, Update> = {
 export type Database = {
   public: {
     Tables: {
+      couple_rituals: Table<Ritual, never, never>
+      ritual_consents: Table<RitualConsent, never, never>
+      ritual_instances: Table<RitualInstance, never, never>
+      ritual_completions: Table<
+        { instance_id: string; user_id: string; completed_at: string },
+        never,
+        never
+      >
       statistics_history_sessions: Table<
         {
           id: string
@@ -337,6 +358,58 @@ export type Database = {
     }
     Views: { goal_progress: { Row: GoalProgress; Relationships: [] } }
     Functions: {
+      can_read_ritual: { Args: { p_ritual_id: string }; Returns: boolean }
+      refresh_ritual_instances: { Args: Record<string, never>; Returns: string }
+      create_couple_ritual: {
+        Args: {
+          p_request_id: string
+          p_terms: RitualTerms
+          p_expected_creations: number
+        }
+        Returns: string
+      }
+      propose_ritual_change: {
+        Args: {
+          p_ritual_id: string
+          p_request_id: string
+          p_kind: RitualKind
+          p_terms: RitualTerms | Record<string, never>
+          p_expected_changes: number
+        }
+        Returns: string
+      }
+      resolve_ritual_consent: {
+        Args: { p_consent_id: string; p_decision: RitualDecision }
+        Returns: undefined
+      }
+      complete_ritual_instance: {
+        Args: { p_instance_id: string }
+        Returns: undefined
+      }
+      withdraw_couple_ritual: {
+        Args: { p_ritual_id: string }
+        Returns: undefined
+      }
+      inspect_ritual_request: {
+        Args: { p_request_id: string; p_ritual_id: string | null }
+        Returns: { id: string; status: string } | null
+      }
+      list_couple_rituals: {
+        Args: {
+          p_filter: string
+          p_cursor: RitualCursor | null
+          p_limit: number
+        }
+        Returns: RitualPage
+      }
+      list_ritual_history: {
+        Args: { p_cursor: RitualHistoryCursor | null; p_limit: number }
+        Returns: RitualHistory
+      }
+      get_ritual_summary: {
+        Args: Record<string, never>
+        Returns: RitualSummary
+      }
       get_statistics: { Args: Record<string, never>; Returns: Statistics }
       get_joint_history: {
         Args: { p_cursor: HistoryCursor | null; p_limit: number }
