@@ -48,6 +48,8 @@ export function useConnectionPages<T>(view: string, id: string | null = null) {
     queryKey: ['connection-pages', session?.user.id, context, view, id],
     enabled: !!client && !!session && !couple.isPending,
     retry: false,
+    refetchInterval: 10000,
+    refetchOnWindowFocus: 'always',
     initialPageParam: null as Json | null,
     queryFn: async ({ pageParam }) => {
       const r = await client!.rpc('connection_read', {

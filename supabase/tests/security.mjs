@@ -3862,3 +3862,137 @@ test('local account deletion with two shared moods neither blocks Auth cascade n
  const own=(await er(2)).moods[0];assert.equal(own.note,'Мій день');assert.equal(own.shared,false)
  assert.equal((await er(2,'sessions')).items.length,0)
 })
+
+// Additional PR8 security review: reproduce report access after terminal transitions.
+async function sharedReviewCard(id,slot){
+ await ec(1,'submit',id,0,{slot:String(slot),answers:'Власний текст першого',publish:true})
+ await ec(2,'submit',id,0,{slot:String(slot),answers:'Власний текст другого',publish:true})
+}
+test('review: closing a game revokes all previously shared answers, not only future draws',async()=>{
+ const id=await game();await ec(1,'draw',id,0);await sharedReviewCard(id,1)
+ assert.equal((await asUser(2,'select * from public.connection_answers where session_id=$1',[id])).length,2)
+ await ec(1,'close',id)
+ for(const n of [1,2]){
+  const rows=await asUser(n,'select * from public.connection_answers where session_id=$1',[id])
+  assert.equal(rows.length,1,'closed session must expose only the reader own text')
+  assert.equal(rows[0].user_id,uid(n))
+  assert.ok((await er(n,'session',id)).answers.every(a=>a.user_id===uid(n)))
+  assert.ok((await er(n,'card-1',id)).answers.every(a=>a.user_id===uid(n)))
+ }
+})
+test('review: unpublishing current card also revokes older joint reports in that game',async()=>{
+ const id=await game();await ec(1,'draw',id,0);await sharedReviewCard(id,1);await ec(1,'draw',id,1);await sharedReviewCard(id,2)
+ await ec(1,'unpublish',id,1,{slot:'2'})
+ for(const n of [1,2]){
+  assert.ok((await asUser(n,'select * from public.connection_answers where session_id=$1',[id])).every(a=>a.user_id===uid(n)))
+  assert.ok((await er(n,'history',id)).items.every(h=>(h.answers??[]).every(a=>a.user_id===uid(n))))
+ }
+})
+test('review: every read branch and direct RLS isolate former partners across leave, rejoin and two new couples',async()=>{
+ await epair();const request=randomUUID(),id=(await ec(1,'start_game',null,0,{},request)).id;await ec(2,'accept',id)
+ await ec(1,'draw',id,0);await sharedReviewCard(id,1);await ec(1,'draw',id,1);await sharedReviewCard(id,2);await ec(1,'notify',id,2)
+ const q=(await ec(1,'start_questionnaire',null,0,{catalog:'care'})).id;await ec(2,'accept',q)
+ await ec(1,'submit',q,0,{slot:'0',answers:await quizAnswers('care'),publish:true});await ec(2,'submit',q,0,{slot:'0',answers:await quizAnswers('care'),publish:true})
+ const day=(await er(1)).today;await ec(1,'mood',null,0,moodPayload(day,true));await ec(2,'mood',null,0,moodPayload(day,false));await ec(2,'react',null,0,{day,reaction:'here'})
+ const context=(await asUser(1,"select public.connection_read('home') x"))[0].x.context
+ const oldCursor={actor:uid(1),context,view:'history',id,slot:2,ceiling:new Date().toISOString()}
+ assert.equal((await er(1,'history',id,oldCursor)).items.length,1)
+ const checkIsolated=async actors=>{
+  for(const n of actors){
+   assert.equal((await asUser(n,'select public.connection_access($1) ok',[id]))[0].ok,false)
+   assert.equal((await asUser(n,'select public.connection_answer_access($1,$2,1) ok',[id,uid(n===1?2:1)]))[0].ok,false)
+   assert.equal((await asUser(n,'select public.connection_mood_access($1,$2) ok',[uid(n===1?2:1),day]))[0].ok,false)
+   assert.deepEqual(await asUser(n,'select id from public.connection_sessions where id=any($1::uuid[])',[[id,q]]),[])
+   const direct=await asUser(n,'select * from public.connection_answers where session_id=any($1::uuid[])',[[id,q]])
+   assert.ok(direct.every(a=>a.user_id===uid(n)),'only the author own private archive remains')
+   const moods=await asUser(n,'select * from public.connection_moods');assert.ok(moods.every(m=>m.user_id===uid(n)))
+   assert.deepEqual(await asUser(n,'select * from public.connection_events where session_id=$1',[id]),[])
+   assert.deepEqual(await asUser(n,'select * from public.connection_reactions where owner_id<>$1',[uid(n)]),[])
+   const home=await er(n);assert.equal(home.partner_mood,null);assert.equal(home.active_game_id,null);assert.deepEqual(home.events,[])
+   assert.deepEqual((await er(n,'sessions')).items,[])
+   for(const sid of [id,q])for(const view of ['session','history','card-1','card-2'])await assert.rejects(er(n,view,sid),/connection_unavailable/)
+  }
+  assert.deepEqual(await er(1,'request',request),{},'own receipt confirms execution without an old session identifier')
+  assert.equal(await er(2,'request',request),null)
+  assert.deepEqual(await ec(1,'start_game',null,0,{},request),{},'same-key replay cannot leak stale identifiers or create a new session')
+  await assert.rejects(er(1,'history',id,oldCursor),/connection_cursor_invalid/)
+ }
+ await asUser(2,'select public.leave_couple_space()');await checkIsolated([1,2])
+ await resolve(2,await invite(1,2));await checkIsolated([1,2])
+ await asUser(2,'select public.leave_couple_space()');await create(2);await resolve(3,await invite(2,3));await resolve(4,await invite(1,4));await checkIsolated([1,2,3,4])
+ // New facts in each new couple must remain invisible to the former partner too.
+ const freshA=(await ec(1,'start_game',null,(await er(1)).game_version)).id;await ec(4,'accept',freshA);await ec(1,'draw',freshA,0)
+ const freshB=(await ec(2,'start_game',null,(await er(2)).game_version)).id;await ec(3,'accept',freshB);await ec(2,'draw',freshB,0)
+ await ec(1,'mood',null,1,{...moodPayload(day,true),note:'Новий простір першого'})
+ await ec(2,'mood',null,1,{...moodPayload(day,true),note:'Новий простір другого'})
+ for(const [sid,outsiders,owner] of [[freshA,[2,3],1],[freshB,[1,4],2]])for(const n of outsiders){
+  assert.equal((await asUser(n,'select public.connection_access($1) ok',[sid]))[0].ok,false)
+  assert.equal((await asUser(n,'select public.connection_mood_access($1,$2) ok',[uid(owner),day]))[0].ok,false)
+  assert.equal((await asUser(n,'select * from public.connection_sessions where id=$1',[sid])).length,0)
+  for(const view of ['session','history','card-1'])await assert.rejects(er(n,view,sid),/connection_unavailable/)
+ }
+ assert.equal((await er(3)).partner_mood.note,'Новий простір другого');assert.equal((await er(4)).partner_mood.note,'Новий простір першого')
+ // A forged cursor with the NEW epoch still cannot authorize an old session.
+ const now=(await asUser(1,"select public.connection_read('home') x"))[0].x.context
+ await assert.rejects(er(1,'history',id,{...oldCursor,context:now}),/connection_unavailable/)
+})
+test('review: both actors can revoke completed questionnaires via every terminal operation; repeated reads and old submit keys never restore reports',async()=>{
+ await epair()
+ for(const actor of [1,2])for(const action of ['close','erase_answers','unpublish','delete_own_history']){
+  const id=(await ec(1,'start_questionnaire',null,(await er(1)).questionnaire_version,{catalog:'talk'})).id;await ec(2,'accept',id)
+  const answers=await quizAnswers('talk'),keys=[randomUUID(),randomUUID()]
+  for(const n of [1,2])await ec(n,'submit',id,0,{slot:'0',answers,publish:true},keys[n-1])
+  assert.equal((await er(1,'session',id)).session.status,'completed');assert.equal((await asUser(actor,'select * from public.connection_answers where session_id=$1',[id])).length,2)
+  await ec(actor,action,id,action==='unpublish'?1:0,action==='unpublish'?{slot:'0'}:{})
+  assert.equal((await pool.query('select count(*)::int n from public.connection_answers where session_id=$1 and user_id=$2',[id,uid(actor)])).rows[0].n,0)
+  assert.equal((await pool.query('select count(*)::int n from public.connection_answers where session_id=$1',[id])).rows[0].n,1)
+  for(let read=0;read<2;read++)for(const n of [1,2]){
+   assert.ok((await asUser(n,'select * from public.connection_answers where session_id=$1',[id])).every(a=>a.user_id===uid(n)))
+   const d=await er(n,'session',id);assert.equal(d.session.status,'closed');assert.ok(d.answers.every(a=>a.user_id===uid(n)))
+   assert.deepEqual((await er(n,'history',id)).items,[]);assert.equal(await er(n,'card-1',id),null)
+  }
+  await ec(actor,'submit',id,0,{slot:'0',answers,publish:true},keys[actor-1])
+  assert.equal((await pool.query('select count(*)::int n from public.connection_answers where session_id=$1',[id])).rows[0].n,1)
+ }
+})
+test('review: every game revocation hides all older shared answers and aggregates for both accounts without deleting the other author data',async()=>{
+ await epair()
+ for(const actor of [1,2])for(const action of ['close','erase_answers','unpublish','delete_own_history']){
+  const id=(await ec(1,'start_game',null,(await er(1)).game_version)).id;await ec(2,'accept',id)
+  await ec(1,'draw',id,0);await sharedReviewCard(id,1);await ec(1,'draw',id,1);await sharedReviewCard(id,2)
+  await ec(actor,action,id,action==='unpublish'?1:0,action==='unpublish'?{slot:'2'}:{})
+  const ownerCount=action==='close'?2:action==='unpublish'?1:0
+  assert.equal((await pool.query('select count(*)::int n from public.connection_answers where session_id=$1 and user_id=$2',[id,uid(actor)])).rows[0].n,ownerCount)
+  assert.equal((await pool.query('select count(*)::int n from public.connection_answers where session_id=$1 and user_id<>$2',[id,uid(actor)])).rows[0].n,2)
+  for(let pass=0;pass<2;pass++)for(const n of [1,2]){
+   const direct=await asUser(n,'select * from public.connection_answers where session_id=$1',[id]);assert.ok(direct.every(a=>a.user_id===uid(n)))
+   const d=await er(n,'session',id);assert.ok(d.answers.every(a=>a.user_id===uid(n)));assert.equal(d.answer_count,direct.length)
+   const h=await er(n,'history',id);assert.ok(h.items.every(i=>(i.answers??[]).every(a=>a.user_id===uid(n))))
+   for(const slot of [1,2])assert.ok((await er(n,'card-'+slot,id)).answers?.every(a=>a.user_id===uid(n))??true)
+  }
+ }
+})
+test('review: exact one-card progress with simultaneous draws, UUID replay, lost storage and status changes',async()=>{
+ const id=await game();await ec(1,'draw',id,0);await sharedReviewCard(id,1)
+ const key=randomUUID(),other=randomUUID(),r=await Promise.allSettled([ec(1,'draw',id,1,{},key),ec(2,'draw',id,1,{},other)])
+ assert.equal(r.filter(x=>x.status==='fulfilled').length,1)
+ const winner=r[0].status==='fulfilled'?1:2,winningKey=winner===1?key:other
+ const check=async()=>{const d=await er(1,'session',id);assert.equal(d.session.position,2);assert.equal(d.remaining,148);assert.equal((await pool.query('select count(*)::int n from public.connection_draws where session_id=$1',[id])).rows[0].n,2);assert.equal((await pool.query('select count(*)::int n from public.connection_deck where session_id=$1 and drawn',[id])).rows[0].n,2)}
+ await check();await ec(winner,'draw',id,1,{},winningKey);await assert.rejects(ec(winner,'draw',id,1,{},randomUUID()),/connection_changed/);await check()
+ await ec(2,'pause',id);await ec(winner,'draw',id,1,{},winningKey);await assert.rejects(ec(1,'draw',id,2),/connection_changed/);await check()
+ await ec(1,'close',id);await ec(winner,'draw',id,1,{},winningKey);await assert.rejects(ec(2,'draw',id,2),/connection_changed/);await check()
+})
+for(const category of ['heat','secret'])test(`review: ${category} requires both current consents in every read path, including after completion and re-enabling`,async()=>{
+ const id=await game()
+ await pool.query('insert into public.connection_draws values($1,1,$2)',[id,category+'-01']);await pool.query('update public.connection_sessions set position=1 where id=$1',[id]);await pool.query('update public.connection_deck set drawn=true where session_id=$1 and card_id=$2',[id,category+'-01'])
+ const masked=async()=>{for(const n of [1,2]){assert.equal((await er(n,'session',id)).card,null);assert.equal(await er(n,'card-1',id),null);assert.deepEqual((await er(n,'history',id)).items,[]);assert.ok((await asUser(n,'select * from public.connection_answers where session_id=$1',[id])).every(a=>a.user_id===uid(n)))}}
+ await masked();await ec(1,'opt',id,0,{enabled:true});await masked();await ec(2,'opt',id,0,{enabled:true});await sharedReviewCard(id,1)
+ assert.equal((await asUser(1,'select * from public.connection_answers where session_id=$1',[id])).length,2)
+ await ec(2,'opt',id,0,{enabled:false});await masked();await ec(2,'opt',id,0,{enabled:true})
+ // Card content can reappear, old publication must not.
+ assert.ok((await er(1,'session',id)).card);assert.equal((await asUser(1,'select * from public.connection_answers where session_id=$1',[id])).length,1)
+ await pool.query("update public.connection_sessions set status='completed' where id=$1",[id])
+ await ec(1,'opt',id,0,{enabled:false});await masked()
+ assert.equal((await pool.query('select count(*)::int n from public.connection_answers where session_id=$1',[id])).rows[0].n,2,'consent withdrawal preserves private own texts')
+ await assert.rejects(ec(1,'opt',id,0,{enabled:true}),/connection_invalid/)
+})

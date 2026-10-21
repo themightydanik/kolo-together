@@ -49,19 +49,19 @@ create table public.connection_requests (
 );
 create function public.connection_clock() returns timestamptz language sql volatile set search_path='' as $$select clock_timestamp()$$;
 create function public.connection_access(p_id uuid) returns boolean language sql stable security definer set search_path='' as $$
- select exists(select 1 from public.connection_sessions s join public.couple_members ma on ma.id=s.am and ma.left_at is null
- join public.couple_members mb on mb.id=s.bm and mb.left_at is null where s.id=p_id and auth.uid() in(s.a,s.b));
+ select exists(select 1 from public.connection_sessions s join public.couple_members ma on ma.id=s.am and ma.user_id=s.a and ma.space_id=s.space_id and ma.left_at is null
+ join public.couple_members mb on mb.id=s.bm and mb.user_id=s.b and mb.space_id=s.space_id and mb.left_at is null where s.id=p_id and auth.uid() in(s.a,s.b));
 $$;
 create function public.connection_mood_access(p_user uuid,p_day date) returns boolean language sql stable security definer set search_path='' as $$
  select exists(select 1 from public.connection_moods m where m.user_id=p_user and m.day=p_day and
  (m.user_id=auth.uid() or (m.shared and exists(select 1 from public.couple_members a join public.couple_members b on a.space_id=b.space_id
- where a.id=m.member_id and b.id=m.partner_member_id and a.left_at is null and b.left_at is null and b.user_id=auth.uid()))));
+ where a.id=m.member_id and a.user_id=m.user_id and b.user_id<>m.user_id and b.id=m.partner_member_id and a.left_at is null and b.left_at is null and b.user_id=auth.uid()))));
 $$;
 create function public.connection_answer_access(p_id uuid,p_user uuid,p_slot integer) returns boolean language sql stable security definer set search_path='' as $$
- select auth.uid()=p_user or (public.connection_access(p_id) and exists(select 1 from public.connection_answers a
+ select exists(select 1 from public.connection_sessions own where own.id=p_id and auth.uid()=p_user and p_user in(own.a,own.b)) or (public.connection_access(p_id) and exists(select 1 from public.connection_answers a
  join public.connection_answers b on a.session_id=b.session_id and a.slot=b.slot and a.user_id<>b.user_id
  where a.session_id=p_id and a.slot=p_slot and a.user_id=p_user and b.user_id=auth.uid() and a.submitted and b.submitted and a.published and b.published
- and exists(select 1 from public.connection_sessions s where s.id=p_id and (s.kind='questionnaire' or s.opt_a and s.opt_b or exists(select 1 from public.connection_draws d join public.connection_catalog c on c.kind='card' and c.id=d.card_id where d.session_id=s.id and d.slot=p_slot and c.content->>'category' not in ('heat','secret'))))));
+ and exists(select 1 from public.connection_sessions s where s.id=p_id and s.status in ('active','paused','completed') and (s.kind='questionnaire' or s.opt_a and s.opt_b or exists(select 1 from public.connection_draws d join public.connection_catalog c on c.kind='card' and c.id=d.card_id where d.session_id=s.id and d.slot=p_slot and c.content->>'category' not in ('heat','secret'))))));
 $$;
 -- Every write is fenced by both a request UUID/payload and a domain version.
 create function public.connection_action(p_action text,p_id uuid,p_expected integer,p_payload jsonb,p_request uuid) returns jsonb
@@ -79,7 +79,8 @@ begin
  select * into old from public.connection_requests where user_id=u and request_id=p_request;
  if found then
    if old.intent<>intent then raise exception 'connection_conflict'; end if;
-   return old.result; -- only UUID/result, never previously disclosed sensitive content
+   if old.result ? 'id' and not public.connection_access((old.result->>'id')::uuid) then return '{}'::jsonb; end if;
+   return old.result; -- only own current-epoch receipt; no stale session identifier
  end if;
  d:=(public.connection_clock() at time zone 'UTC')::date;
  if p_action='mood' then
@@ -120,15 +121,22 @@ begin
      end if;
    elsif p_action in ('decline','close','pause','resume') then
      if p_action='decline' and (s.b<>u or s.status<>'pending') then raise exception 'connection_changed'; end if;
-     if (p_action='pause' and s.status<>'active') or (p_action='resume' and s.status<>'paused') or s.status not in ('pending','active','paused') then raise exception 'connection_changed'; end if;
+     if (p_action='pause' and s.status<>'active') or (p_action='resume' and s.status<>'paused') or (s.status not in ('pending','active','paused') and not(p_action='close' and s.status='completed')) then raise exception 'connection_changed'; end if;
      update public.connection_sessions set status=case p_action when 'decline' then 'declined' when 'close' then 'closed' when 'pause' then 'paused' else 'active' end where id=s.id;
      if p_action='close' and s.kind='questionnaire' then delete from public.connection_answers where session_id=s.id and user_id=u; end if;
    elsif p_action='erase_answers' then
      delete from public.connection_answers where session_id=s.id and user_id=u;
      update public.connection_sessions set status='closed' where id=s.id;
    elsif p_action='opt' and s.kind='game' then
-     if s.status not in ('active','paused') or jsonb_typeof(p_payload->'enabled') is distinct from 'boolean' then raise exception 'connection_invalid'; end if;
+     if (s.status not in ('active','paused') and p_payload->'enabled' is distinct from 'false'::jsonb) or jsonb_typeof(p_payload->'enabled') is distinct from 'boolean' then raise exception 'connection_invalid'; end if;
      update public.connection_sessions cs set opt_a=case when cs.a=u then (p_payload->>'enabled')::boolean else opt_a end,opt_b=case when cs.b=u then (p_payload->>'enabled')::boolean else opt_b end where id=s.id;
+     -- Withdrawing category consent also permanently withdraws own old publications.
+     -- Re-enabling categories authorizes future cards, never resurrects old reports.
+     if p_payload->'enabled'='false'::jsonb then
+       update public.connection_answers a set published=false where a.session_id=s.id and a.user_id=u
+       and exists(select 1 from public.connection_draws d join public.connection_catalog c on c.kind='card' and c.id=d.card_id
+         where d.session_id=s.id and d.slot=a.slot and c.content->>'category' in ('heat','secret'));
+     end if;
    elsif p_action='draw' and s.kind='game' then
      if s.status<>'active' or s.position<>p_expected then raise exception 'connection_changed'; end if;
      if s.position>0 and (select count(*) from public.connection_answers where session_id=s.id and slot=s.position and submitted)<>2 then raise exception 'connection_not_ready'; end if;
@@ -176,7 +184,7 @@ begin
        on conflict(session_id,user_id,slot) do update set draft=excluded.draft,submitted=excluded.submitted,published=excluded.published,skipped=excluded.skipped,version=connection_answers.version+1;
        if s.kind='questionnaire' and (select count(*) from public.connection_answers where session_id=s.id and submitted and published)=2 then update public.connection_sessions set status='completed' where id=s.id; end if;
      end if;
-   elsif p_action='notify' and s.kind='game' and s.position>0 then
+   elsif p_action='notify' and s.kind='game' and s.position>0 and s.status in ('active','paused') then
      if s.position<>p_expected then raise exception 'connection_changed'; end if;
      insert into public.connection_events values(s.id,s.position,u,case when s.a=u then s.b else s.a end,false) on conflict do nothing;
    elsif p_action='ack' then
@@ -220,9 +228,9 @@ begin
      select coalesce(jsonb_agg(jsonb_build_object('user_id',a.user_id,'slot',a.slot,'submitted',a.submitted,'skipped',a.skipped,
       'version',case when a.user_id=u then a.version else null end,
       'draft',case when public.connection_answer_access(a.session_id,a.user_id,a.slot) then a.draft else null end)),'[]') into rows
-      from public.connection_answers a where a.session_id=s.id and a.slot=case when s.kind='game' then s.position else 0 end;
+      from public.connection_answers a where a.session_id=s.id and a.slot=case when s.kind='game' then s.position else 0 end and (a.user_id=u or s.status in ('active','paused','completed'));
      result:=jsonb_build_object('session',to_jsonb(s),'answers',rows,'card',(select c.content from public.connection_draws d join public.connection_catalog c on c.kind='card' and c.id=d.card_id where d.session_id=s.id and d.slot=s.position and (s.opt_a and s.opt_b or c.content->>'category' not in ('heat','secret'))),
-       'remaining',150-s.position,'answer_count',(select count(*) from public.connection_answers where session_id=s.id and submitted and not skipped),'questionnaire',(select content from public.connection_catalog where kind='questionnaire' and id=s.catalog_id));
+       'remaining',150-s.position,'answer_count',(select count(*) from public.connection_answers where session_id=s.id and submitted and not skipped and public.connection_answer_access(session_id,user_id,slot)),'questionnaire',(select content from public.connection_catalog where kind='questionnaire' and id=s.catalog_id));
    else
      select coalesce(jsonb_agg(to_jsonb(t) order by t.slot desc),'[]') into rows from (
        select d.slot,c.content as card,(select jsonb_agg(jsonb_build_object('user_id',a.user_id,'draft',a.draft,'skipped',a.skipped)) from public.connection_answers a where a.session_id=s.id and a.slot=d.slot and public.connection_answer_access(a.session_id,a.user_id,a.slot)) as answers
@@ -232,6 +240,7 @@ begin
    end if;
  elsif p_view='request' then
    select r.result into result from public.connection_requests r where user_id=u and request_id=p_id;
+   if result ? 'id' and not public.connection_access((result->>'id')::uuid) then result:='{}'::jsonb; end if;
  else raise exception 'connection_invalid'; end if;
  return jsonb_build_object('context',ctx,'data',result);
 exception when invalid_text_representation then raise exception 'connection_cursor_invalid';
@@ -358,36 +367,36 @@ insert into public.connection_catalog(kind,id,version,content) values ('card','t
 insert into public.connection_catalog(kind,id,version,content) values ('card','trust-28',1,$catalog${"id": "trust-28", "category": "trust", "text": "Що допомагає тобі просити про допомогу без почуття боргу?", "version": 1}$catalog$::jsonb);
 insert into public.connection_catalog(kind,id,version,content) values ('card','trust-29',1,$catalog${"id": "trust-29", "category": "trust", "text": "Яку обіцянку краще замінити чесним обговоренням можливостей?", "version": 1}$catalog$::jsonb);
 insert into public.connection_catalog(kind,id,version,content) values ('card','trust-30',1,$catalog${"id": "trust-30", "category": "trust", "text": "Як ми зрозуміємо, що наша домовленість досі підходить обом?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-01',1,$catalog${"id": "heat-01", "category": "heat", "text": "Яка атмосфера допомагає тобі почуватися вільно під час розмови про близькість?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-02',1,$catalog${"id": "heat-02", "category": "heat", "text": "Як тобі комфортно повідомляти, що сьогодні хочеться лише ніжності?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-03',1,$catalog${"id": "heat-03", "category": "heat", "text": "Які слова про привабливість звучать для тебе тепло?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-04',1,$catalog${"id": "heat-04", "category": "heat", "text": "Як ти хотів(-ла) б запитувати про бажання без очікування згоди?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-05',1,$catalog${"id": "heat-05", "category": "heat", "text": "Що допомагає тобі розслабитися перед інтимною розмовою?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-06',1,$catalog${"id": "heat-06", "category": "heat", "text": "Як ти розумієш різницю між фліртом і запрошенням до дії?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-07',1,$catalog${"id": "heat-07", "category": "heat", "text": "Який спосіб перевірити комфорт у моменті тобі подобається?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-08',1,$catalog${"id": "heat-08", "category": "heat", "text": "Що робить дотик бажаним саме для тебе?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-09',1,$catalog${"id": "heat-09", "category": "heat", "text": "Як тобі приємно давати зрозуміти, що ти передумав(-ла)?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-10',1,$catalog${"id": "heat-10", "category": "heat", "text": "Яку межу щодо публічних проявів ніжності ти хотів(-ла) б обговорити?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-11',1,$catalog${"id": "heat-11", "category": "heat", "text": "Який темп романтичного вечора дозволяє тобі не поспішати?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-12',1,$catalog${"id": "heat-12", "category": "heat", "text": "Що допомагає тобі говорити про власні вподобання без ніяковості?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-13',1,$catalog${"id": "heat-13", "category": "heat", "text": "Як ми можемо залишати місце для сміху в близькості?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-14',1,$catalog${"id": "heat-14", "category": "heat", "text": "Яке освітлення створює для тебе відчуття затишку?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-15',1,$catalog${"id": "heat-15", "category": "heat", "text": "Як тобі комфортніше починати розмову про інтимні очікування?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-16',1,$catalog${"id": "heat-16", "category": "heat", "text": "Яка форма ніжності приємна тобі після напруженого дня?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-17',1,$catalog${"id": "heat-17", "category": "heat", "text": "Що для тебе означає взаємна уважність у близькості?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-18',1,$catalog${"id": "heat-18", "category": "heat", "text": "Яке запитання про комфорт ти хотів(-ла) б чути частіше?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-19',1,$catalog${"id": "heat-19", "category": "heat", "text": "Як відрізняється твоя потреба в близькості залежно від настрою?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-20',1,$catalog${"id": "heat-20", "category": "heat", "text": "Які прояви романтики не потребують фізичного контакту?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-21',1,$catalog${"id": "heat-21", "category": "heat", "text": "Що тобі важливо відчувати, коли ти відмовляєшся від близькості?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-22',1,$catalog${"id": "heat-22", "category": "heat", "text": "Як ми могли б говорити про зміни бажань із часом?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-23',1,$catalog${"id": "heat-23", "category": "heat", "text": "Яка музика допомагає тобі почуватися привабливо?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-24',1,$catalog${"id": "heat-24", "category": "heat", "text": "Які слова після ніжного моменту підтримують тебе?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-25',1,$catalog${"id": "heat-25", "category": "heat", "text": "Як ти хочеш домовлятися про приватність інтимних розмов?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-26',1,$catalog${"id": "heat-26", "category": "heat", "text": "Що допомагає тобі не сприймати відмову як оцінку себе?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-27',1,$catalog${"id": "heat-27", "category": "heat", "text": "Який спосіб запитати дозволу на обійми здається тобі природним?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-28',1,$catalog${"id": "heat-28", "category": "heat", "text": "Яке бажання можна спокійно обговорити без обіцянки здійснення?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-29',1,$catalog${"id": "heat-29", "category": "heat", "text": "Як ти хотів(-ла) б завершувати відверту розмову, якщо втомився(-лася)?", "version": 1}$catalog$::jsonb);
-insert into public.connection_catalog(kind,id,version,content) values ('card','heat-30',1,$catalog${"id": "heat-30", "category": "heat", "text": "Що для тебе робить близькість взаємною, а не обов’язковою?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-01',1,$catalog${"id": "heat-01", "category": "heat", "text": "Який наш поцілунок ти хотів(-ла) б згадати в усіх найприємніших подробицях?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-02',1,$catalog${"id": "heat-02", "category": "heat", "text": "У якому моєму образі тобі найважче приховати усмішку захоплення?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-03',1,$catalog${"id": "heat-03", "category": "heat", "text": "Який мій несподіваний жест колись змусив твоє серце забитися швидше?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-04',1,$catalog${"id": "heat-04", "category": "heat", "text": "Як би ти почав(-ла) флірт зі мною, якби ми сьогодні зустрілися в готельному барі?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-05',1,$catalog${"id": "heat-05", "category": "heat", "text": "Який наш вечір мав особливу хімію ще до першого дотику?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-06',1,$catalog${"id": "heat-06", "category": "heat", "text": "Які слова від мене могли б перетворити звичайне повідомлення на спокусливе запрошення до розмови?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-07',1,$catalog${"id": "heat-07", "category": "heat", "text": "Який повільний танець ти уявляєш для нас, коли за вікном уже стемніло?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-08',1,$catalog${"id": "heat-08", "category": "heat", "text": "Що в моєму голосі або сміху здається тобі особливо привабливим?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-09',1,$catalog${"id": "heat-09", "category": "heat", "text": "Яку романтичну сцену для нас ти вигадав(-ла) б у будиночку далеко від міста?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-10',1,$catalog${"id": "heat-10", "category": "heat", "text": "Яка деталь у моїй зовнішності приємно відволікає тебе навіть після довгого знайомства?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-11',1,$catalog${"id": "heat-11", "category": "heat", "text": "Який наш ніжний момент ти продовжив(-ла) б ще на кілька хвилин?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-12',1,$catalog${"id": "heat-12", "category": "heat", "text": "Яку грайливу фразу ти прошепотів(-ла) б мені під час побачення?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-13',1,$catalog${"id": "heat-13", "category": "heat", "text": "Що тобі найбільше подобається в передчутті близькості між нами?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-14',1,$catalog${"id": "heat-14", "category": "heat", "text": "Який аромат, світло й музика склали б твою формулу вечора з іскрою?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-15',1,$catalog${"id": "heat-15", "category": "heat", "text": "Яке бажання про наш час удвох тобі було б приємно озвучити без обіцянки його здійснення?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-16',1,$catalog${"id": "heat-16", "category": "heat", "text": "Яке моє зізнання про твою привабливість ти хотів(-ла) б почути наодинці?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-17',1,$catalog${"id": "heat-17", "category": "heat", "text": "Яку гру з романтичними підказками ти придумав(-ла) б для нашого побачення?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-18',1,$catalog${"id": "heat-18", "category": "heat", "text": "Який приємний спільний досвід ти повторив(-ла) б у зовсім іншій атмосфері?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-19',1,$catalog${"id": "heat-19", "category": "heat", "text": "Який поцілунок для тебе найромантичніший: несподіваний, довгоочікуваний чи після щирої розмови?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-20',1,$catalog${"id": "heat-20", "category": "heat", "text": "Як виглядав би наш ідеальний ранок після вечора, який нікуди не поспішав?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-21',1,$catalog${"id": "heat-21", "category": "heat", "text": "Який мій спосіб дивитися на тебе відчувається як тихий флірт?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-22',1,$catalog${"id": "heat-22", "category": "heat", "text": "Яку фантазію про романтичну подорож ти охоче обговорив(-ла) б зі мною?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-23',1,$catalog${"id": "heat-23", "category": "heat", "text": "Яка маленька зміна в обстановці могла б додати новизни нашому часу наодинці?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-24',1,$catalog${"id": "heat-24", "category": "heat", "text": "Який комплімент про твою чуттєвість звучав би для тебе природно й приємно?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-25',1,$catalog${"id": "heat-25", "category": "heat", "text": "У який момент між нами ти відчуваєш найсильнішу суміш ніжності та бажання?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-26',1,$catalog${"id": "heat-26", "category": "heat", "text": "Який затишний ритуал після близькості тобі хотілося б зберегти для нас?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-27',1,$catalog${"id": "heat-27", "category": "heat", "text": "Якби ти міг(-ла) залишити мені лише одну грайливу підказку про бажане побачення, що б це було?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-28',1,$catalog${"id": "heat-28", "category": "heat", "text": "Яка моя риса приваблює тебе так, як не могла б передати жодна фотографія?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-29',1,$catalog${"id": "heat-29", "category": "heat", "text": "Про яку нову романтичну ідею тобі цікаво просто помріяти разом, залишивши право нічого не втілювати?", "version": 1}$catalog$::jsonb);
+insert into public.connection_catalog(kind,id,version,content) values ('card','heat-30',1,$catalog${"id": "heat-30", "category": "heat", "text": "Що допомогло б нам зберегти приємне передчуття наступної зустрічі після сьогоднішнього вечора?", "version": 1}$catalog$::jsonb);
 insert into public.connection_catalog(kind,id,version,content) values ('card','secret-01',1,$catalog${"id": "secret-01", "category": "secret", "text": "Яку незвичну професію ти спробував(-ла) б на один день?", "version": 1}$catalog$::jsonb);
 insert into public.connection_catalog(kind,id,version,content) values ('card','secret-02',1,$catalog${"id": "secret-02", "category": "secret", "text": "Яка маленька мрія чекає на вільні вихідні?", "version": 1}$catalog$::jsonb);
 insert into public.connection_catalog(kind,id,version,content) values ('card','secret-03',1,$catalog${"id": "secret-03", "category": "secret", "text": "Що ти колекціонував(-ла) б, якби місце не мало значення?", "version": 1}$catalog$::jsonb);

@@ -14,11 +14,14 @@ import {
   PlayingCard,
   DemoConnection,
   ConnectionHub,
+  Game,
+  QuestionnaireForm,
 } from '../features/connection/screens'
 import {
   catalog,
   compareAnswers,
   connectionError,
+  type Detail,
 } from '../features/connection/model'
 const state = vi.hoisted(() => ({
   write: vi.fn(),
@@ -214,4 +217,91 @@ test('SQL errors are never shown to people', () => {
   expect(connectionError(Error('connection_categories_locked'))).toContain(
     'добровільно',
   )
+})
+
+function reviewDetail(
+  kind: 'game' | 'questionnaire',
+  status = 'completed',
+): Detail {
+  const q = catalog.questionnaires[0],
+    answers = Object.fromEntries(
+      q.questions.map((x) => [x.id, x.type === 'scale' ? '4' : 'talk']),
+    )
+  return {
+    session: {
+      id: 'review',
+      a: 'owner',
+      b: 'partner',
+      kind,
+      catalog_id: kind === 'questionnaire' ? q.id : null,
+      status,
+      position: kind === 'game' ? 1 : 0,
+      opt_a: true,
+      opt_b: true,
+      created_at: '2026-10-21T00:00:00Z',
+    },
+    answers: [
+      {
+        user_id: 'owner',
+        slot: kind === 'game' ? 1 : 0,
+        draft: kind === 'game' ? 'Мій приватний текст' : answers,
+        submitted: true,
+        skipped: false,
+        version: 1,
+      },
+      {
+        user_id: 'partner',
+        slot: kind === 'game' ? 1 : 0,
+        draft: kind === 'game' ? 'Чужий опублікований текст' : answers,
+        submitted: true,
+        skipped: false,
+        version: null,
+      },
+    ],
+    card: kind === 'game' ? catalog.cards[0] : null,
+    remaining: 149,
+    answer_count: 2,
+    questionnaire: kind === 'questionnaire' ? q : null,
+  }
+}
+test('closed questionnaire never renders a stale joint report even if a cached payload still contains both answers', () => {
+  const d = reviewDetail('questionnaire'),
+    v = render(<QuestionnaireForm detail={d} />)
+  expect(screen.getByText(/Ваш тематичний профіль/)).toBeVisible()
+  v.rerender(
+    <QuestionnaireForm
+      detail={{ ...d, session: { ...d.session, status: 'closed' } }}
+    />,
+  )
+  expect(screen.queryByText(/Ваш тематичний профіль/)).not.toBeInTheDocument()
+})
+test('closed game masks cached partner text while preserving the reader own private text', () => {
+  render(
+    <MemoryRouter>
+      <Game detail={reviewDetail('game', 'closed')} />
+    </MemoryRouter>,
+  )
+  expect(screen.getByText('Мій приватний текст')).toBeVisible()
+  expect(
+    screen.queryByText('Чужий опублікований текст'),
+  ).not.toBeInTheDocument()
+})
+test('completed game retains a withdrawal action and masks intimate card and partner text without both consents', () => {
+  const d = reviewDetail('game')
+  d.card = catalog.cards.find((c) => c.category === 'heat')!
+  d.session.opt_b = false
+  render(
+    <MemoryRouter>
+      <Game detail={d} />
+    </MemoryRouter>,
+  )
+  expect(
+    screen.getByRole('button', {
+      name: 'Відкликати мою згоду на відверті категорії',
+    }),
+  ).toBeVisible()
+  expect(screen.queryByText(d.card.text)).not.toBeInTheDocument()
+  expect(
+    screen.queryByText('Чужий опублікований текст'),
+  ).not.toBeInTheDocument()
 })

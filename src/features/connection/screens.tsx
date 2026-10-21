@@ -741,12 +741,17 @@ export function ConnectionDetail() {
     </div>
   )
 }
-function Game({ detail }: { detail: Detail }) {
+export function Game({ detail }: { detail: Detail }) {
   const s = detail.session,
     { session } = useAuth(),
     own = detail.answers.find((a) => a.user_id === session?.user.id),
     both =
-      detail.answers.length === 2 && detail.answers.every((a) => a.submitted)
+      ['active', 'paused', 'completed'].includes(s.status) &&
+      detail.answers.length === 2 &&
+      detail.answers.every((a) => a.submitted)
+  const cardAllowed =
+    !!detail.card &&
+    (!['heat', 'secret'].includes(detail.card.category) || (s.opt_a && s.opt_b))
   return (
     <>
       <Card className="space-y-5">
@@ -755,7 +760,7 @@ function Game({ detail }: { detail: Detail }) {
         </p>
         <PlayingCard
           key={s.position}
-          card={detail.card}
+          card={cardAllowed ? detail.card : null}
           number={s.position}
           remaining={detail.remaining}
         />
@@ -763,7 +768,8 @@ function Game({ detail }: { detail: Detail }) {
           Можна пропустити без пояснення. Згода на відповідь не є згодою на
           фізичні дії.
         </p>
-        {['active', 'paused'].includes(s.status) && (
+        {(['active', 'paused'].includes(s.status) ||
+          (s.a === session?.user.id ? s.opt_a : s.opt_b)) && (
           <>
             <p>
               Відверті категорії «Високі температури» та «Таємне та бажане»:{' '}
@@ -801,13 +807,13 @@ function Game({ detail }: { detail: Detail }) {
                 ? 'Завершив(-ла) участь'
                 : 'Ще не завершено'}
             </p>
-            {s.status === 'active' && detail.card && !own?.submitted && (
+            {s.status === 'active' && cardAllowed && !own?.submitted && (
               <CardAnswer
                 key={s.id + ':' + s.position + ':' + (own?.version ?? 0)}
                 detail={detail}
               />
             )}
-            {s.status === 'active' && !detail.card && !own?.submitted && (
+            {s.status === 'active' && !cardAllowed && !own?.submitted && (
               <Action
                 action="skip"
                 id={s.id}
@@ -846,7 +852,7 @@ function Game({ detail }: { detail: Detail }) {
           <div className="deck-complete" role="status">
             <h2>150 запитань. Безліч нових відкриттів одне про одного</h2>
             <p>
-              Пройдено 150 карток у п’яти категоріях. Надіслано відповідей:{' '}
+              Пройдено 150 карток у п’яти категоріях. Доступних тобі відповідей:{' '}
               {detail.answer_count}. Відповіді й пропуски залишаються в історії.
             </p>
             <p>{catalog.categories.map((c) => c.title).join(' · ')}</p>
@@ -931,7 +937,18 @@ function Published({ detail }: { detail: Detail }) {
   return (
     <section className="published-answers space-y-3" aria-live="polite">
       {detail.answers
-        .filter((a) => a.submitted && a.draft !== null)
+        .filter(
+          (a) =>
+            a.submitted &&
+            a.draft !== null &&
+            (a.user_id === session?.user.id ||
+              (['active', 'paused', 'completed'].includes(
+                detail.session.status,
+              ) &&
+                !!detail.card &&
+                (!['heat', 'secret'].includes(detail.card.category) ||
+                  (detail.session.opt_a && detail.session.opt_b)))),
+        )
         .map((a) => (
           <div key={a.user_id} className="rounded-2xl border border-border p-4">
             <h3>
@@ -949,7 +966,7 @@ function Published({ detail }: { detail: Detail }) {
     </section>
   )
 }
-function QuestionnaireForm({ detail }: { detail: Detail }) {
+export function QuestionnaireForm({ detail }: { detail: Detail }) {
   const { session } = useAuth(),
     own = detail.answers.find((a) => a.user_id === session?.user.id),
     q = detail.questionnaire!,
@@ -972,6 +989,7 @@ function QuestionnaireForm({ detail }: { detail: Detail }) {
     ),
     complete = q.questions.every((x) => answers[x.id])
   const shared =
+    ['active', 'paused', 'completed'].includes(s.status) &&
     detail.answers.length === 2 &&
     detail.answers.every((a) => a.submitted && a.draft !== null)
   const report = shared

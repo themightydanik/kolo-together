@@ -1252,7 +1252,8 @@ try {
     (await ecRead(a, 'session', ecQuiz.id)).session.status,
     'completed',
   )
-  const ecGame = await ecWrite(a, 'start_game')
+  const ecGameRequest = randomUUID()
+  const ecGame = await ecWrite(a, 'start_game', null, 0, {}, ecGameRequest)
   await ecWrite(b, 'accept', ecGame.id)
   await ecWrite(a, 'draw', ecGame.id, 0)
   assert.equal(
@@ -1313,6 +1314,47 @@ try {
     check(await a.rpc('get_statistics'), 'Economy preserved').shared
       .together_xp,
     70,
+  )
+  step = 'emotional connection withdrawal and completed questionnaire reports'
+  await ecWrite(a, 'unpublish', ecQuiz.id, 1, { slot: '0' })
+  for (const client of [a, b]) {
+    const own = check(await client.auth.getUser(), 'Review account').user.id
+    const rows = check(
+      await client
+        .from('connection_answers')
+        .select('*')
+        .eq('session_id', ecQuiz.id),
+      'Revoked questionnaire RLS',
+    )
+    assert.ok(rows.every((row) => row.user_id === own))
+    assert.ok(
+      (await ecRead(client, 'session', ecQuiz.id)).answers.every(
+        (row) => row.user_id === own,
+      ),
+    )
+  }
+  const gameBeforeClose = await ecRead(a, 'session', ecGame.id)
+  assert.equal(gameBeforeClose.remaining, 148)
+  await ecWrite(b, 'close', ecGame.id)
+  for (const client of [a, b]) {
+    const own = check(await client.auth.getUser(), 'Review account').user.id
+    assert.ok(
+      check(
+        await client
+          .from('connection_answers')
+          .select('*')
+          .eq('session_id', ecGame.id),
+        'Closed game RLS',
+      ).every((row) => row.user_id === own),
+    )
+    assert.ok(
+      (await ecRead(client, 'history', ecGame.id)).items.every((card) =>
+        (card.answers ?? []).every((row) => row.user_id === own),
+      ),
+    )
+  }
+  console.log(
+    'PASS: completed questionnaire withdrawal and closing game history revoke partner answers through real JWT RPC and direct RLS',
   )
   console.log(
     'PASS: emotional check-in privacy, support, independent questionnaire disclosure, shared shuffled game, private drafts, concurrent transition and effective Supabase ACLs',
@@ -1480,6 +1522,12 @@ try {
     'Departure revokes game',
   )
   assert.equal((await ecRead(a)).moods[0].shared, false)
+  assert.deepEqual(await ecRead(a, 'request', ecGameRequest), {})
+  assert.equal(await ecRead(b, 'request', ecGameRequest), null)
+  assert.deepEqual(
+    await ecWrite(a, 'start_game', null, 0, {}, ecGameRequest),
+    {},
+  )
   const rejoinToken = check(
     await a.rpc('create_couple_invitation', { p_email: email('b') }),
     'Invite original partner back',

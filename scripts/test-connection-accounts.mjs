@@ -96,6 +96,7 @@ try {
   await a.until(
     `document.querySelector('main')?.textContent.includes('Картка 1 із 150')`,
   )
+  await b.evaluate('sessionStorage.clear()')
   await b.call('Page.reload')
   await b.until(
     `document.querySelector('main')?.textContent.includes('Картка 1 із 150')`,
@@ -156,7 +157,9 @@ try {
     await clients[0].rpc('connection_read', { p_view: 'session', p_id: id }),
   ).data
   assert.equal(current.session.position, 2)
+  assert.equal(current.remaining, 148)
   for (let i = 0; i < 2; i++) {
+    await browsers[i].evaluate('sessionStorage.clear()')
     await browsers[i].call('Page.reload')
     await browsers[i].until(
       `document.querySelector('main')?.textContent.includes('Картка 2 із 150')`,
@@ -169,8 +172,34 @@ try {
       Buffer.from(shot.data, 'base64'),
     )
   }
+  await b.click('Відмовитися від подальшої участі')
+  await b.until(
+    `!document.querySelector('main')?.textContent.includes(${JSON.stringify(answer)})`,
+  )
+  await a.until(
+    `document.querySelector('main')?.textContent.includes('Завершено участь')`,
+  )
+  assert.ok(
+    await a.evaluate(
+      `document.querySelector('main').textContent.includes(${JSON.stringify(answer)})`,
+    ),
+    'Author own private history remains',
+  )
+  check(await clients[1].rpc('leave_couple_space'))
+  for (const browser of browsers) {
+    await browser.call('Page.reload')
+    await browser.until(
+      `document.querySelector('main')?.textContent.includes('Не вдалося виконати дію')`,
+    )
+    assert.equal(
+      await browser.evaluate(
+        `document.querySelector('main').textContent.includes(${JSON.stringify(answer)})`,
+      ),
+      false,
+    )
+  }
   console.log(
-    'PASS: two isolated local Auth accounts in Chromium; UI invitation, same active card, private persisted draft, blind publication, skip, concurrent next and reload',
+    'PASS: two isolated local Auth accounts in Chromium; UI invitation, same active card, private persisted draft, blind publication, skip, concurrent next, lost sessionStorage/reload, closing shared history and leave',
   )
   console.log('Screenshots:', artifacts)
 } finally {
