@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { Coins, Gift, Plus } from 'lucide-react'
 import { useAuth } from '../auth/auth-context'
 import { Card } from '../../components/ui/card'
@@ -327,6 +327,7 @@ export function PurchaseCard({
   )
 }
 export function RewardsScreen() {
+  const [params] = useSearchParams()
   const query = useRewardStore()
   const { session } = useAuth()
   const [filter, setFilter] = useState('all')
@@ -341,6 +342,9 @@ export function RewardsScreen() {
       </Card>
     )
   const data = query.data
+  const linkedPurchase = data.purchases.find(
+    (p) => p.id === params.get('purchase') && p.status === 'completed',
+  )
   const me = session!.user.id
   const hasPartner = data.couple?.members.length === 2
   const incoming = data.offers.filter(
@@ -355,6 +359,16 @@ export function RewardsScreen() {
   )
   return (
     <div className="space-y-5">
+      {params.has('purchase') && (
+        <section aria-label="Награда из истории">
+          <h2 className="mb-3 font-semibold">Награда из истории</h2>
+          {linkedPurchase ? (
+            <PurchaseCard purchase={linkedPurchase} data={data} />
+          ) : (
+            <p>Эта награда больше недоступна.</p>
+          )}
+        </section>
+      )}
       <Card>
         <Coins className="mb-2 text-primary" aria-hidden="true" />
         <p className="text-sm">Ваш баланс</p>

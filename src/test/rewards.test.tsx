@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Routes, Route } from 'react-router'
@@ -108,7 +109,7 @@ function data(): RewardStore {
     },
   }
 }
-function wrapper(children: React.ReactNode, online = true) {
+function wrapper(children: React.ReactNode, online = true, entry = '/') {
   const rpc = vi.fn().mockResolvedValue({ data: 'purchase', error: null })
   const client = {
     auth: {
@@ -126,7 +127,7 @@ function wrapper(children: React.ReactNode, online = true) {
   const rendered = render(
     <QueryClientProvider client={cache}>
       <AuthProvider client={client}>
-        <MemoryRouter>
+        <MemoryRouter initialEntries={[entry]}>
           <Routes>
             <Route element={<ProtectedRoute />}>
               <Route path="/" element={children} />
@@ -472,4 +473,24 @@ test('legacy unresolved UUID never adopts the latest history counter', async () 
     request: id,
     expected: 0,
   })
+})
+
+test('history reward link opens confirmed permitted receipt and no replay controls', async () => {
+  const workspace = data()
+  workspace.purchases = [
+    { ...purchase, status: 'completed', resolved_at: '2026-10-20T10:00:00Z' },
+  ]
+  query.mockReturnValue({ isPending: false, isError: false, data: workspace })
+  wrapper(<RewardsScreen />, true, '/?purchase=purchase')
+  const detail = await screen.findByRole('region', {
+    name: 'Награда из истории',
+  })
+  expect(within(detail).getByText(/Вечер кино/)).toBeInTheDocument()
+  expect(within(detail).queryByRole('button')).not.toBeInTheDocument()
+})
+test('foreign receipt URL cannot manufacture purchase details', async () => {
+  wrapper(<RewardsScreen />, true, '/?purchase=foreign')
+  expect(
+    await screen.findByText('Эта награда больше недоступна.'),
+  ).toBeInTheDocument()
 })

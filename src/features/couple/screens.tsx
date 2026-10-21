@@ -8,6 +8,7 @@ import { Heart, Users } from 'lucide-react'
 import { useAuth } from '../auth/auth-context'
 import { clearInvitationToken, invitationToken } from '../auth/invitation-token'
 import { useCouple } from './api'
+import { StatisticsSection } from '../statistics/screens'
 import { Card } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { EmptyState, LoadingState } from '../../components/states'
@@ -86,6 +87,8 @@ export function CreateSpaceScreen() {
       await queryClient.invalidateQueries({ queryKey: ['task-workspace'] })
       await queryClient.invalidateQueries({ queryKey: ['reward-store'] })
       await queryClient.invalidateQueries({ queryKey: ['couple-goals'] })
+      queryClient.removeQueries({ queryKey: ['statistics'] })
+      queryClient.removeQueries({ queryKey: ['joint-history'] })
       navigate('/us', { replace: true })
     },
   })
@@ -263,6 +266,8 @@ export function AcceptInvitationScreen() {
       await queryClient.invalidateQueries({ queryKey: ['task-workspace'] })
       await queryClient.invalidateQueries({ queryKey: ['reward-store'] })
       await queryClient.invalidateQueries({ queryKey: ['couple-goals'] })
+      queryClient.removeQueries({ queryKey: ['statistics'] })
+      queryClient.removeQueries({ queryKey: ['joint-history'] })
       navigate(accept ? '/us' : '/', {
         replace: true,
         state: { invitationDeclined: !accept },
@@ -352,11 +357,23 @@ export function CoupleScreen() {
       await queryClient.invalidateQueries({ queryKey: ['task-workspace'] })
       await queryClient.invalidateQueries({ queryKey: ['reward-store'] })
       await queryClient.invalidateQueries({ queryKey: ['couple-goals'] })
+      queryClient.removeQueries({ queryKey: ['statistics'] })
+      queryClient.removeQueries({ queryKey: ['joint-history'] })
     },
   })
   return (
     <div className="space-y-5">
       <CoupleStatus />
+      {!query.isPending && !query.isError && (
+        <StatisticsSection
+          context={
+            query.data?.members
+              .map((m) => m.id)
+              .sort()
+              .join(':') ?? 'solo'
+          }
+        />
+      )}
       <Card>
         <h2 className="font-semibold">Два человека. Одна команда.</h2>
         <p className="my-3 text-sm text-muted-foreground">

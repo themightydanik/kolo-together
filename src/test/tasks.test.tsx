@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
@@ -96,7 +97,7 @@ function data(): TaskWorkspace {
     },
   }
 }
-function wrapper(children: React.ReactNode) {
+function wrapper(children: React.ReactNode, entry = '/') {
   const rpc = vi.fn().mockResolvedValue({ data: null, error: null })
   const client = {
     auth: {
@@ -113,7 +114,7 @@ function wrapper(children: React.ReactNode) {
   render(
     <QueryClientProvider client={cache}>
       <AuthProvider client={client}>
-        <MemoryRouter>
+        <MemoryRouter initialEntries={[entry]}>
           <Routes>
             <Route element={<ProtectedRoute />}>
               <Route path="/" element={children} />
@@ -371,4 +372,30 @@ test('offline task actions are disabled without optimistic rewards', async () =>
   fireEvent.click(button)
   expect(rpc).not.toHaveBeenCalled()
   expect(screen.queryByText(/Сервер подтвердил/)).not.toBeInTheDocument()
+})
+
+test('history link opens exactly a permitted completed instance without completion controls', async () => {
+  const workspace = data()
+  workspace.instances = [
+    { ...instance, status: 'completed', completed_at: '2026-10-20T10:00:00Z' },
+  ]
+  workspaceQuery.mockReturnValue({
+    isPending: false,
+    isError: false,
+    data: workspace,
+  })
+  wrapper(<TasksScreen />, '/?instance=instance')
+  const detail = await screen.findByRole('region', {
+    name: 'Выполнение из истории',
+  })
+  expect(within(detail).getByText('Полить цветы')).toBeInTheDocument()
+  expect(
+    within(detail).queryByRole('button', { name: 'Отметить своё выполнение' }),
+  ).not.toBeInTheDocument()
+})
+test('foreign history instance URL cannot manufacture task details', async () => {
+  wrapper(<TasksScreen />, '/?instance=foreign')
+  expect(
+    await screen.findByText('Это выполнение больше недоступно.'),
+  ).toBeInTheDocument()
 })

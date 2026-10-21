@@ -58,6 +58,15 @@ before(async () => {
       await complete(90, (await instance(historical)).id)
     }
     await pool.query(await readFile('supabase/migrations/' + name, 'utf8'))
+    if (name === '20261020120000_achievements_statistics.sql') {
+      const historical = (await asUser(90,'select public.get_statistics() as data'))[0].data
+      assert.equal(historical.personal.tasks,1,'pre-migration completions count without reward backfill')
+      assert.equal(historical.personal.xp,20)
+      assert.equal(historical.badges.find(b=>b.code==='personal_1').progress,1)
+      assert.ok(historical.badges.find(b=>b.code==='personal_1').unlocked_at)
+      assert.deepEqual((await asUser(90,'select public.acknowledge_statistics() as codes'))[0].codes,[])
+      assert.deepEqual(await progress(90),{xp:20,coins:10})
+    }
     if (name === '20261019220000_rewards_store.sql') {
       assert.deepEqual(
         await progress(90),
@@ -2426,4 +2435,544 @@ test('review: same-key replay after completion is read only, and inspection neve
  assert.equal((await asUser(2,'select public.inspect_goal_request($1,$2) as result',[key,id]))[0].result,null)
  assert.equal((await pool.query('select * from public.goal_events')).rowCount,events)
  assert.equal((await pool.query('select * from public.goal_reward_ledger')).rowCount,1)
+})
+
+// Stage 6: read-only derived facts, UTC, pagination and acknowledgements.
+const statistics = async (n) =>
+  (await asUser(n, 'select public.get_statistics() as data'))[0].data
+const history = async (n, cursor = null, limit = 20) =>
+  (
+    await asUser(n, 'select public.get_joint_history($1,$2) as data', [
+      cursor,
+      limit,
+    ])
+  )[0].data
+const acknowledge = async (n) =>
+  (await asUser(n, 'select public.acknowledge_statistics() as codes'))[0].codes
+const badge = (data, code) => data.badges.find((b) => b.code === code)
+async function jointFact() {
+  const id = await task(1, { kind: 'joint' })
+  await respond(2, id)
+  const i = await instance(id)
+  await Promise.all([complete(1, i.id), complete(2, i.id)])
+  return id
+}
+test('statistics exact personal/joint/goal/space thresholds, repeated reads never earn or duplicate', async () => {
+  await pair()
+  let data = await statistics(1)
+  assert.equal(data.badges.length, 13)
+  assert.equal(data.personal.tasks, 0)
+  assert.equal(data.shared.tasks, 0)
+  assert.equal(data.calendar.length, 30)
+  assert.equal((await history(1)).items.length, 0)
+  assert.deepEqual(await acknowledge(1), [])
+  for (let i = 1; i <= 25; i++) {
+    await complete(1, (await instance(await task(1))).id)
+    data = await statistics(1)
+    for (const threshold of [1, 10, 25])
+      assert.equal(
+        badge(data, `personal_${threshold}`).progress >= threshold,
+        i >= threshold,
+      )
+  }
+  assert.deepEqual((await acknowledge(1)).sort(), [
+    'personal_1',
+    'personal_10',
+    'personal_25',
+  ])
+  for (let i = 1; i <= 25; i++) {
+    await jointFact()
+    data = await statistics(1)
+    for (const threshold of [1, 5, 10, 25])
+      assert.equal(
+        badge(data, `joint_${threshold}`).progress >= threshold,
+        i >= threshold,
+      )
+    for (const threshold of [20, 100, 500])
+      assert.equal(
+        badge(data, `together_${threshold}`).progress >= threshold,
+        i * 20 >= threshold,
+      )
+  }
+  for (let i = 1; i <= 10; i++) {
+    const id = await readyGoal()
+    await goalDecision(2, await goalChange(1, id, 'complete'))
+    data = await statistics(1)
+    for (const threshold of [1, 3, 10])
+      assert.equal(
+        badge(data, `goal_${threshold}`).progress >= threshold,
+        i >= threshold,
+      )
+  }
+  assert.equal(data.shared.tasks, 25)
+  assert.equal(data.shared.goals, 10)
+  assert.equal(data.shared.together_xp, 1000)
+  assert.equal(data.shared.achievements, 10)
+  assert.equal(data.personal.tasks, 50)
+  assert.equal(badge(data, 'together_20').unlocked_at, null)
+  const before = await progress(1)
+  const results = await Promise.all(
+    Array.from({ length: 4 }, () => statistics(1)),
+  )
+  assert.ok(results.every((r) => r.shared.together_xp === 1000))
+  assert.deepEqual(await progress(1), before)
+  const notices = await Promise.all([acknowledge(1), acknowledge(1)])
+  assert.equal(notices.flat().length, 10)
+  assert.equal(new Set(notices.flat()).size, 10)
+  assert.deepEqual(await acknowledge(1), [])
+})
+test('statistics personal privacy survives hidden/old tasks; new partner sees only historical space total', async () => {
+  const space = await pair()
+  await earn(1, 2)
+  await earn(2, 1)
+  await jointFact()
+  const id = await readyGoal()
+  await goalDecision(2, await goalChange(1, id, 'complete'))
+  assert.equal((await statistics(1)).personal.tasks, 3)
+  assert.equal((await statistics(2)).personal.tasks, 2)
+  assert.equal((await statistics(3)).personal.tasks, 0)
+  const oldPage = await history(1, null, 1)
+  assert.ok(oldPage.next_cursor)
+  await asUser(2, 'select public.leave_couple_space()')
+  assert.equal((await statistics(1)).shared.tasks, 0)
+  assert.equal((await statistics(2)).personal.tasks, 2)
+  assert.equal((await history(2)).items.length, 0)
+  await assert.rejects(
+    history(1, oldPage.next_cursor),
+    /invalid_statistics_cursor/,
+  )
+  await resolve(3, await invite(1, 3))
+  const fresh = await statistics(3)
+  assert.equal(fresh.shared.together_xp, 70)
+  assert.equal(fresh.shared.tasks, 0)
+  assert.equal(fresh.shared.goals, 0)
+  assert.equal(fresh.shared.xp_series_complete, false)
+  assert.equal((await history(3)).items.length, 0)
+  assert.equal(badge(fresh, 'together_20').progress, 70)
+  assert.equal(badge(fresh, 'together_20').unlocked_at, null)
+  assert.deepEqual(await acknowledge(3), [])
+  await assert.rejects(
+    history(3, oldPage.next_cursor),
+    /invalid_statistics_cursor/,
+  )
+  await asUser(3, 'select public.leave_couple_space()')
+  await resolve(2, await invite(1, 2))
+  assert.equal((await statistics(2)).shared.tasks, 1)
+  assert.equal((await statistics(2)).shared.goals, 1)
+  await assert.rejects(
+    history(1, oldPage.next_cursor),
+    /invalid_statistics_cursor/,
+  )
+  assert.equal((await statistics(1)).shared.together_xp, 70)
+  assert.equal(
+    (
+      await pool.query(
+        'select together_xp from public.space_progress where space_id=$1',
+        [space],
+      )
+    ).rows[0].together_xp,
+    '70',
+  )
+})
+test('statistics reward history includes confirmed receipt only; refund never changes achievements or inflates Coins', async () => {
+  await pair()
+  await earn(2, 3)
+  const id = await offer(1, { single: false, price: 5 })
+  const p = await buy(2, id)
+  await purchaseAction(1, p, 'ready')
+  assert.equal(
+    (await history(2)).items.filter((x) => x.kind === 'reward').length,
+    0,
+  )
+  await purchaseAction(2, p, 'cancel')
+  assert.equal((await statistics(2)).personal.coins, 30)
+  const q = await buy(2, id)
+  await purchaseAction(1, q, 'ready')
+  await purchaseAction(2, q, 'confirm')
+  await purchaseAction(2, q, 'confirm')
+  const events = (await history(2)).items.filter((x) => x.kind === 'reward')
+  assert.equal(events.length, 1)
+  assert.equal(events[0].object_id, q)
+  const data = await statistics(2)
+  assert.equal(data.personal.coins, 25)
+  assert.equal(data.personal.tasks, 3)
+  assert.equal(data.shared.tasks, 0)
+  assert.equal(data.shared.goals, 0)
+  await asUser(2, 'select public.leave_couple_space()')
+  await resolve(3, await invite(1, 3))
+  assert.equal(
+    (await history(1)).items.filter((x) => x.kind === 'reward').length,
+    0,
+  )
+  assert.equal((await history(3)).items.length, 0)
+})
+test('statistics keyset orders equal timestamps, bounded pages have no overlap, rejects bad/actor/epoch cursors', async () => {
+  await pair()
+  for (let i = 0; i < 12; i++) await jointFact()
+  // Disposable test fixture only: force tie timestamps to exercise the second sort key.
+  await pool.query(
+    "update public.reward_ledger set created_at=date_trunc('day',now()) where kind='together'",
+  )
+  const seen = [],
+    pages = []
+  let cursor = null
+  do {
+    const p = await history(1, cursor, 3)
+    pages.push(p)
+    seen.push(...p.items)
+    cursor = p.next_cursor
+  } while (cursor)
+  assert.equal(seen.length, 15)
+  assert.equal(new Set(seen.map((x) => x.key)).size, 15)
+  const replay = await history(1, pages[0].next_cursor, 3)
+  assert.deepEqual(replay.items, pages[1].items)
+  for (const c of [
+    {},
+    [],
+    { ...pages[0].next_cursor, at: 'bad' },
+    { ...pages[0].next_cursor, until: 'infinity' },
+    { ...pages[0].next_cursor, extra: true },
+  ])
+    await assert.rejects(history(1, c), /invalid_statistics_cursor/)
+  await assert.rejects(
+    history(2, pages[0].next_cursor),
+    /invalid_statistics_cursor/,
+  )
+  for (const limit of [0, 51, null])
+    await assert.rejects(history(1, null, limit), /invalid_statistics_cursor/)
+  await jointFact()
+  const continued = await history(1, pages[0].next_cursor, 50)
+  assert.ok(
+    continued.items.every((x) => !pages[0].items.some((y) => y.key === x.key)),
+  )
+  await assert.rejects(history(null), /permission denied/)
+})
+test('statistics UTC midnight calendar, 7/30 windows, current/best streak and gaps preserve balances', async () => {
+  await create(1)
+  const offsets = [0, 1, 2, 4, 5, 6, 7, 29, 30]
+  for (const offset of offsets) {
+    const t = await task(1)
+    await complete(1, (await instance(t)).id)
+    await pool.query(
+      "update public.reward_ledger set created_at=(now() at time zone 'UTC')::date::timestamp at time zone 'UTC' - $2*interval '1 day' where task_id=$1",
+      [t, offset],
+    )
+  }
+  const before = await progress(1),
+    data = await statistics(1)
+  assert.equal(data.streak.current, 3)
+  assert.equal(data.streak.best, 4)
+  assert.equal(data.activity.days7, 6)
+  assert.equal(data.activity.days30, 8)
+  assert.equal(data.calendar.length, 30)
+  assert.equal(data.calendar.at(-1).actions, 1)
+  // Move today's fact to yesterday 23:59:59 UTC: yesterday streak remains current.
+  await pool.query(
+    "update public.reward_ledger set created_at=created_at-interval '1 second' where created_at=(now() at time zone 'UTC')::date::timestamp at time zone 'UTC'",
+  )
+  const yesterday = await statistics(1)
+  assert.equal(yesterday.calendar.at(-1).actions, 0)
+  assert.equal(yesterday.calendar.at(-2).actions, 2)
+  assert.equal(yesterday.streak.current, 2)
+  assert.deepEqual(await progress(1), before)
+  await pool.query(
+    "update public.reward_ledger set created_at=created_at-interval '40 days'",
+  )
+  const gap = await statistics(1)
+  assert.equal(gap.streak.current, 0)
+  assert.equal(gap.activity.days30, 0)
+  assert.deepEqual(await progress(1), before)
+})
+test('statistics helper grants, caller verification, RLS and no client-controlled achievement writes', async () => {
+  await pool.query(
+    await readFile('supabase/tests/statistics-privileges.sql', 'utf8'),
+  )
+  for (const fn of ['statistics_badges()', 'statistics_context()'])
+    await assert.rejects(asUser(1, `select public.${fn}`), /permission denied/)
+  await assert.rejects(
+    asUser(1, 'select * from public.statistics_joint_facts'),
+    /permission denied/,
+  )
+  await assert.rejects(statistics(8), /verified_account_required/)
+  for (const sql of [
+    "insert into public.statistics_seen values(auth.uid(),'forged','{}',now())",
+    "update public.statistics_seen set codes='{}'",
+    'delete from public.statistics_seen',
+    'truncate public.statistics_seen',
+  ])
+    await assert.rejects(asUser(1, sql), /permission denied/)
+  await acknowledge(1)
+  await acknowledge(2)
+  assert.equal(
+    (await asUser(1, 'select * from public.statistics_seen')).length,
+    1,
+  )
+  assert.equal((await statistics(1)).personal.tasks, 0)
+  await create(1)
+  await earn(1)
+  const concurrent = await Promise.all([
+    acknowledge(1),
+    acknowledge(1),
+    acknowledge(1),
+  ])
+  assert.deepEqual(concurrent.flat(), ['personal_1'])
+})
+test('statistics growing history uses indexed bounded source pages and an aggregate snapshot', async (t) => {
+  const space = await pair(),
+    id = await task(1, { kind: 'joint', recurrence: 'daily' })
+  await respond(2, id)
+  // Owner-created, disposable historical fixture; never run on external accounts.
+  await pool.query(
+    `insert into public.task_instances(task_id,period_start,status,xp,coins,together_xp,completed_at,created_at)
+ select $1,(now() at time zone 'UTC')::date-i,'completed',20,10,20,now()-i*interval '1 day',now()-i*interval '1 day' from generate_series(1,3000) i`,
+    [id],
+  )
+  await pool.query(
+    `insert into public.task_completions(instance_id,user_id,completed_at)
+ select i.id,u,i.completed_at from public.task_instances i cross join unnest($2::uuid[]) u where task_id=$1 and status='completed'`,
+    [id, [uid(1), uid(2)]],
+  )
+  await pool.query(
+    `insert into public.reward_ledger(task_id,instance_id,completion_id,user_id,space_id,kind,title,xp,coins,together_xp,created_at)
+ select $1,i.id,c.id,c.user_id,$2,'personal','Старая забота',20,10,0,c.completed_at
+ from public.task_instances i join public.task_completions c on c.instance_id=i.id where i.task_id=$1`,
+    [id, space],
+  )
+  await pool.query(
+    `insert into public.reward_ledger(task_id,instance_id,space_id,kind,title,xp,coins,together_xp,created_at)
+ select $1,id,$2,'together','Старая забота',0,0,20,completed_at from public.task_instances where task_id=$1 and status='completed'`,
+    [id, space],
+  )
+  await pool.query('insert into public.space_progress values($1,60000)', [
+    space,
+  ])
+  await pool.query(
+    'insert into public.user_progress select u,60000,30000 from unnest($1::uuid[]) u',
+    [[uid(1), uid(2)]],
+  )
+  await pool.query(
+    'analyze public.reward_ledger; analyze public.task_instances; analyze public.task_participants',
+  )
+  const c = await pool.connect()
+  let plan
+  try {
+    await c.query('begin')
+    await c.query("select set_config('request.jwt.claim.sub',$1,true)", [
+      uid(1),
+    ])
+    plan = (
+      await c.query(
+        `explain(analyze,buffers,format json) select * from public.statistics_joint_facts where kind='task' and at<now()-interval '2900 days' order by at desc,key desc limit 21`,
+      )
+    ).rows[0]['QUERY PLAN'][0]
+    await c.query('rollback')
+  } finally {
+    c.release()
+  }
+  const text = JSON.stringify(plan)
+  assert.match(text, /statistics_joint_facts_idx/)
+  assert.equal(plan.Plan['Actual Rows'], 21)
+  const start = performance.now(),
+    snap = await statistics(1),
+    duration = performance.now() - start
+  assert.equal(snap.shared.tasks, 3000)
+  assert.equal(snap.personal.tasks, 3000)
+  assert.equal(snap.shared.together_xp, 60000)
+  assert.equal((await history(1)).items.length, 20)
+  t.diagnostic(
+    `3000 joint instances / 9000 ledger rows: source page ${plan['Execution Time']} ms; full snapshot ${duration.toFixed(1)} ms`,
+  )
+})
+test('live keyset excludes already seen achievement codes after a late backdated COMMIT', async () => {
+  await pair()
+  const pending = await task(1, { kind: 'joint' })
+  await respond(2, pending)
+  const i = await instance(pending)
+  await complete(1, i.id)
+  const late = await pool.connect()
+  try {
+    await late.query('begin')
+    await late.query('set local role authenticated')
+    await late.query("select set_config('request.jwt.claim.sub',$1,true)", [
+      uid(2),
+    ])
+    // Assign an xid before page one; do not take the shared business lock yet.
+    await late.query('select pg_current_xact_id()')
+    for (let n = 0; n < 5; n++) await jointFact()
+    const first = await history(1, null, 2)
+    assert.ok(first.items.some((x) => x.key === 'achievement:joint_5'))
+    await late.query('select public.complete_task_instance($1)', [i.id])
+    await late.query('commit')
+    const all = [...first.items]
+    let cursor = first.next_cursor
+    while (cursor) {
+      const p = await history(1, cursor, 2)
+      all.push(...p.items)
+      cursor = p.next_cursor
+    }
+    assert.equal(all.length, 8)
+    assert.equal(new Set(all.map((x) => x.key)).size, 8)
+    assert.equal((await history(1, null, 50)).items.length, 8)
+  } finally {
+    await late.query('rollback')
+    late.release()
+  }
+})
+test('history sessions are private, bounded, expiring and membership acknowledgements do not replay old celebrations', async () => {
+  await pair()
+  for (let i = 0; i < 2; i++) await jointFact()
+  assert.deepEqual(await acknowledge(1), [])
+  await asUser(2, 'select public.leave_couple_space()')
+  await acknowledge(1)
+  await resolve(2, await invite(1, 2))
+  assert.deepEqual(await acknowledge(1), [])
+  const first = await history(1, null, 1)
+  assert.deepEqual(Object.keys(first.next_cursor).sort(), [
+    'at',
+    'badges',
+    'key',
+    'session',
+  ])
+  await assert.rejects(
+    asUser(1, 'select * from public.statistics_history_sessions'),
+    /permission denied/,
+  )
+  await assert.rejects(
+    asUser(1, 'delete from public.statistics_history_sessions'),
+    /permission denied/,
+  )
+  await pool.query(
+    "update public.statistics_history_sessions set expires_at=clock_timestamp()-interval '1 second' where id=$1",
+    [first.next_cursor.session],
+  )
+  await assert.rejects(
+    history(1, first.next_cursor),
+    /invalid_statistics_cursor/,
+  )
+  await Promise.all(Array.from({ length: 12 }, () => history(1, null, 1)))
+  assert.equal(
+    (
+      await pool.query(
+        'select count(*)::integer n from public.statistics_history_sessions where user_id=$1',
+        [uid(1)],
+      )
+    ).rows[0].n,
+    10,
+  )
+})
+
+test('review: live keyset survives non-ordering UPDATE and VACUUM FREEZE without xmin dependencies', async () => {
+  await pair()
+  for (let i = 0; i < 3; i++) await jointFact()
+  const first = await history(1, null, 1)
+  // Disposable owner maintenance only, not an operation available to a browser.
+  await pool.query(
+    "update public.reward_ledger set title=title where kind='together'",
+  )
+  await pool.query('vacuum (freeze,analyze) public.reward_ledger')
+  const all = [...first.items]
+  let cursor = first.next_cursor
+  while (cursor) {
+    const p = await history(1, cursor, 1)
+    all.push(...p.items)
+    cursor = p.next_cursor
+  }
+  assert.equal(
+    all.length,
+    4,
+    'three task facts plus first joint achievement remain readable',
+  )
+  assert.equal(new Set(all.map((x) => x.key)).size, 4)
+})
+test('review: thirty-day cumulative XP includes all permitted facts before the window and hides drift', async () => {
+  await pair()
+  const old = await jointFact()
+  await jointFact()
+  await pool.query(
+    "update public.reward_ledger set created_at=now()-interval '45 days' where kind='together' and task_id=$1",
+    [old],
+  )
+  const data = await statistics(1)
+  assert.equal(data.shared.xp_series_complete, true)
+  assert.equal(data.calendar[0].cumulative_xp, 20)
+  assert.equal(data.calendar.at(-1).cumulative_xp, 40)
+  await pool.query('update public.space_progress set together_xp=together_xp+7')
+  assert.equal((await statistics(1)).shared.xp_series_complete, false)
+})
+test('review: live keyset documents late commits above the boundary as refresh-only, not strict snapshot', async () => {
+  await pair()
+  const pending = await task(1, { kind: 'joint' })
+  await respond(2, pending)
+  const i = await instance(pending)
+  await complete(1, i.id)
+  for (let n = 0; n < 5; n++) await jointFact()
+  const late = await pool.connect()
+  try {
+    await late.query('begin')
+    await late.query('set local role authenticated')
+    await late.query("select set_config('request.jwt.claim.sub',$1,true)", [
+      uid(2),
+    ])
+    const first = await history(1, null, 2)
+    await late.query('select public.complete_task_instance($1)', [i.id])
+    await late.query('commit')
+    const all = [...first.items]
+    let cursor = first.next_cursor
+    while (cursor) {
+      const p = await history(1, cursor, 2)
+      all.push(...p.items)
+      cursor = p.next_cursor
+    }
+    assert.equal(all.length, 7)
+    assert.equal(new Set(all.map((x) => x.key)).size, 7)
+    assert.equal((await history(1, null, 50)).items.length, 8)
+    assert.equal(
+      (
+        await pool.query(
+          "select to_regprocedure('public.statistics_visible(xid,pg_snapshot)') as fn",
+        )
+      ).rows[0].fn,
+      null,
+    )
+  } finally {
+    await late.query('rollback')
+    late.release()
+  }
+})
+test('review: protected totals, raw facts, cursor filters and acknowledgement rollback preserve economy', async () => {
+  await pair()
+  await acknowledge(1)
+  await earn(1)
+  const before = await progress(1)
+  await pool.query(`create function public.review_fail_seen() returns trigger language plpgsql as $$begin raise exception 'review_seen_commit_failure'; end$$;
+ create constraint trigger review_fail_seen after insert or update on public.statistics_seen deferrable initially deferred for each row execute function public.review_fail_seen()`)
+  try {
+    await assert.rejects(acknowledge(1), /review_seen_commit_failure/)
+    assert.deepEqual(await progress(1), before)
+  } finally {
+    await pool.query(
+      'drop trigger review_fail_seen on public.statistics_seen; drop function public.review_fail_seen()',
+    )
+  }
+  assert.deepEqual(await acknowledge(1), ['personal_1'])
+  assert.deepEqual(await acknowledge(1), [])
+  for (let n = 0; n < 5; n++) await jointFact()
+  const p = await history(1, null, 1)
+  for (const badges of [['personal_1'], ['joint_1', 'joint_1'], [{}], null])
+    await assert.rejects(
+      history(1, { ...p.next_cursor, badges }),
+      /invalid_statistics_cursor/,
+    )
+  const fake = await history(1, { ...p.next_cursor, badges: [] }, 50)
+  assert.ok(fake.items.every((x) => x.kind !== 'reward'))
+  for (const sql of [
+    'select * from public.statistics_joint_facts',
+    'update public.space_progress set together_xp=999',
+    'update public.user_progress set coins=999',
+    'delete from public.goal_reward_ledger',
+  ])
+    await assert.rejects(asUser(1, sql), /permission denied/)
+  await pool.query(
+    await readFile('supabase/tests/statistics-privileges.sql', 'utf8'),
+  )
 })

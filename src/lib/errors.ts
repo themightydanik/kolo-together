@@ -27,8 +27,10 @@ export function errorMessage(error: unknown): string {
   )
     return 'Нет связи с сервером. Проверьте сеть и повторите попытку.'
   const taskErrors: Record<string, string> = {
-    goal_intent_pending:'Сначала проверьте прежний запрос или явно начните новое действие после проверки истории.',
-    goal_history_changed:'История изменилась. Проверьте список целей и согласования перед новым действием.',
+    goal_intent_pending:
+      'Сначала проверьте прежний запрос или явно начните новое действие после проверки истории.',
+    goal_history_changed:
+      'История изменилась. Проверьте список целей и согласования перед новым действием.',
     invalid_goal: 'Проверьте название, описание и дату цели.',
     invalid_goal_change: 'Проверьте условия шага или порядок шагов.',
     goal_unavailable: 'Цель недоступна. Обновите список своих целей.',
@@ -67,6 +69,10 @@ export function errorMessage(error: unknown): string {
       'Период завершился. Обновите список для текущего экземпляра.',
   }
   if (Object.hasOwn(taskErrors, message)) return taskErrors[message]
+  if (message === 'statistics_context_changed')
+    return 'Состав пары изменился. Обновите страницу, чтобы получить доступную историю.'
+  if (message === 'invalid_statistics_cursor')
+    return 'Состав пары или история изменились. Обновите историю с начала.'
   if (message === 'recovery_required')
     return 'Откройте новую ссылку восстановления пароля.'
   if (message === 'already_in_space')

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { Check, Plus, Sparkles } from 'lucide-react'
 import { useAuth } from '../auth/auth-context'
 import { CoupleStatus } from '../couple/screens'
@@ -224,6 +224,7 @@ export function TaskCard({
   )
 }
 export function TasksScreen() {
+  const [params] = useSearchParams()
   const query = useTaskWorkspace()
   const { session } = useAuth()
   const [filter, setFilter] = useState('mine')
@@ -253,12 +254,31 @@ export function TasksScreen() {
             (p) => p.task_id === t.id && p.user_id === session!.user.id,
           ),
   )
+  const linkedInstance = data.instances.find(
+    (i) => i.id === params.get('instance') && i.status === 'completed',
+  )
+  const linkedTask = data.tasks.find((t) => t.id === linkedInstance?.task_id)
   const finished = data.instances.filter((i) => i.status === 'completed')
   const past = data.tasks.filter(
     (t) => t.status === 'declined' || t.status === 'cancelled',
   )
   return (
     <div className="space-y-5">
+      {params.has('instance') && (
+        <section aria-label="Выполнение из истории">
+          <h2 className="mb-3 font-semibold">Выполнение из истории</h2>
+          {linkedInstance && linkedTask ? (
+            <TaskCard
+              task={linkedTask}
+              data={data}
+              instance={linkedInstance}
+              history
+            />
+          ) : (
+            <p>Это выполнение больше недоступно.</p>
+          )}
+        </section>
+      )}
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           Забота без обязательств и штрафов
