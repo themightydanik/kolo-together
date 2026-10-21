@@ -977,6 +977,179 @@ try {
   console.log(
     'PASS: statistics historical facts, 13 badges, exact balances, UTC calendar, JWT privacy, keyset pagination and silent acknowledgement',
   )
+  step = 'rituals schema and independent voluntary participation'
+  if (
+    !(await db.query("select to_regclass('public.couple_rituals') as name"))
+      .rows[0].name
+  )
+    await db.query(
+      await readFile(
+        'supabase/migrations/20261021120000_couple_rituals.sql',
+        'utf8',
+      ),
+    )
+  await db.query(await readFile('supabase/tests/ritual-privileges.sql', 'utf8'))
+  await db.query("notify pgrst,'reload schema'")
+  const ritualTerms = {
+    title: 'Чай без спешки',
+    description: 'Только по желанию обоих',
+    emoji: '☕',
+    cadence: 'daily',
+    days: [1, 2, 3, 4, 5, 6, 7],
+  }
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (
+      !(
+        await a.rpc('list_couple_rituals', {
+          p_filter: 'active',
+          p_cursor: null,
+          p_limit: 20,
+        })
+      ).error
+    )
+      break
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  const ritualList = async (
+    client,
+    filter = 'active',
+    cursor = null,
+    limit = 20,
+  ) =>
+    check(
+      await client.rpc('list_couple_rituals', {
+        p_filter: filter,
+        p_cursor: cursor,
+        p_limit: limit,
+      }),
+      'Real ritual list',
+    )
+  const makeRitual = async () =>
+    check(
+      await a.rpc('create_couple_ritual', {
+        p_request_id: randomUUID(),
+        p_terms: ritualTerms,
+        p_expected_creations: (await ritualList(a)).create_version,
+      }),
+      'Create ritual',
+    )
+  const acceptRitual = async (id) => {
+    const consent = check(
+      await a
+        .from('ritual_consents')
+        .select('*')
+        .eq('ritual_id', id)
+        .eq('status', 'pending')
+        .single(),
+      'Read ritual consent',
+    )
+    check(
+      await b.rpc('resolve_ritual_consent', {
+        p_consent_id: consent.id,
+        p_decision: 'accept',
+      }),
+      'Partner accepts ritual',
+    )
+  }
+  const ritual = await makeRitual()
+  assert.equal(
+    check(
+      await a.from('ritual_instances').select('*').eq('ritual_id', ritual),
+      'Inactive until consent',
+    ).length,
+    0,
+  )
+  await acceptRitual(ritual)
+  const ritualInstance = check(
+    await a
+      .from('ritual_instances')
+      .select('*')
+      .eq('ritual_id', ritual)
+      .single(),
+    'Current UTC ritual instance',
+  )
+  const ritualCoins = check(
+    await a.rpc('get_coin_summary'),
+    'Coins before ritual',
+  )
+  const ritualStats = check(
+    await a.rpc('get_statistics'),
+    'Statistics before ritual',
+  )
+  const ritualMarks = await Promise.all([
+    a.rpc('complete_ritual_instance', { p_instance_id: ritualInstance.id }),
+    b.rpc('complete_ritual_instance', { p_instance_id: ritualInstance.id }),
+    b.rpc('complete_ritual_instance', { p_instance_id: ritualInstance.id }),
+  ])
+  ritualMarks.forEach((r) => check(r, 'Own ritual mark'))
+  assert.equal(
+    check(await a.rpc('get_ritual_summary'), 'Completed ritual count')
+      .completed,
+    1,
+  )
+  assert.equal(
+    check(
+      await a.rpc('list_ritual_history', { p_cursor: null, p_limit: 20 }),
+      'Ritual history',
+    ).items.length,
+    1,
+  )
+  assert.deepEqual(
+    check(await a.rpc('get_coin_summary'), 'Ritual never changes Coins'),
+    ritualCoins,
+  )
+  const statsAfterRitual = check(
+    await a.rpc('get_statistics'),
+    'Ritual never changes task/goal statistics',
+  )
+  assert.deepEqual(statsAfterRitual.personal, ritualStats.personal)
+  assert.deepEqual(statsAfterRitual.shared, ritualStats.shared)
+  assert.ok(
+    (
+      await a
+        .from('ritual_completions')
+        .insert({ instance_id: ritualInstance.id, user_id: created[2] })
+    ).error,
+    'Cannot mark for someone else',
+  )
+  assert.ok((await a.rpc('ritual_clock')).error, 'Internal UTC clock denied')
+  assert.equal(
+    check(
+      await c.from('couple_rituals').select('*'),
+      'Cross-space ritual isolation',
+    ).length,
+    0,
+  )
+  const unfinishedRitual = await makeRitual()
+  await acceptRitual(unfinishedRitual)
+  const unfinishedRitualInstance = check(
+    await a
+      .from('ritual_instances')
+      .select('*')
+      .eq('ritual_id', unfinishedRitual)
+      .single(),
+    'Second ritual instance',
+  )
+  check(
+    await a.rpc('complete_ritual_instance', {
+      p_instance_id: unfinishedRitualInstance.id,
+    }),
+    'Partial ritual before departure',
+  )
+  const pendingRitualChange = check(
+    await a.rpc('propose_ritual_change', {
+      p_ritual_id: unfinishedRitual,
+      p_request_id: randomUUID(),
+      p_kind: 'pause',
+      p_terms: {},
+      p_expected_changes: 1,
+    }),
+    'Ritual change requires consent',
+  )
+  const oldRitualCursor = (await ritualList(a, 'active', null, 1)).next_cursor
+  console.log(
+    'PASS: rituals real Auth/JWT/RLS, bilateral consent, two independent marks, duplicates, history, zero economy effects and private helper denial',
+  )
   const unfinishedGoal = await createGoal()
   check(
     await b.rpc('resolve_goal_consent', {
@@ -1103,6 +1276,37 @@ try {
     ).items.length,
     0,
   )
+  assert.equal(
+    (await ritualList(a, 'closed')).rituals.length,
+    0,
+    'Missing original partner hides ritual history',
+  )
+  assert.ok(
+    (
+      await a.rpc('list_couple_rituals', {
+        p_filter: 'active',
+        p_cursor: oldRitualCursor,
+        p_limit: 20,
+      })
+    ).error,
+    'Departure invalidates ritual cursor',
+  )
+  assert.equal(
+    (
+      await db.query('select status from public.ritual_instances where id=$1', [
+        unfinishedRitualInstance.id,
+      ])
+    ).rows[0].status,
+    'missed',
+  )
+  assert.equal(
+    (
+      await db.query('select status from public.ritual_consents where id=$1', [
+        pendingRitualChange,
+      ])
+    ).rows[0].status,
+    'void',
+  )
   const rejoinToken = check(
     await a.rpc('create_couple_invitation', { p_email: email('b') }),
     'Invite original partner back',
@@ -1125,6 +1329,23 @@ try {
     ).error,
     'Closed goal cannot revive',
   )
+  assert.equal(
+    check(await b.rpc('get_ritual_summary'), 'Original ritual history returns')
+      .completed,
+    1,
+  )
+  assert.ok(
+    (
+      await b.rpc('propose_ritual_change', {
+        p_ritual_id: unfinishedRitual,
+        p_request_id: randomUUID(),
+        p_kind: 'resume',
+        p_terms: {},
+        p_expected_changes: 0,
+      })
+    ).error,
+    'Closed ritual never resumes',
+  )
   check(await b.rpc('leave_couple_space'), 'Leave disposable pair again')
   const newPartnerToken = check(
     await a.rpc('create_couple_invitation', { p_email: email('c') }),
@@ -1136,6 +1357,26 @@ try {
       p_accept: true,
     }),
     'New partner joins',
+  )
+  assert.equal(
+    (await ritualList(c, 'closed')).rituals.length,
+    0,
+    'New partner never reads old ritual titles or UUIDs',
+  )
+  assert.equal(
+    check(await c.rpc('get_ritual_summary'), 'New partner ritual count')
+      .completed,
+    0,
+  )
+  assert.equal(
+    check(
+      await c.rpc('list_ritual_history', { p_cursor: null, p_limit: 20 }),
+      'New partner ritual history',
+    ).items.length,
+    0,
+  )
+  console.log(
+    'PASS: ritual departure closes/voids, same-partner return preserves completed facts without revival, new partner history remains private',
   )
   const replacementStats = check(
     await c.rpc('get_statistics'),

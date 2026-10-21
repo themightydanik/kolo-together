@@ -1,3 +1,4 @@
+import { TodayRituals } from '../rituals/screens'
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { Check, Plus, Sparkles } from 'lucide-react'
@@ -457,6 +458,7 @@ export function TodayScreen() {
         </p>
       </Card>
       <ProgressCards data={data} />
+      <TodayRituals />
       {!data.spaceId && <CoupleStatus />}
       <div className="flex items-center justify-between">
         <h2 className="font-semibold">Дела на сегодня</h2>

@@ -23,6 +23,7 @@ import {
   weekStart,
   type TaskWorkspace,
 } from '../features/tasks/api'
+vi.mock('../features/rituals/screens',()=>({TodayRituals:()=>null}))
 const workspaceQuery = vi.hoisted(() => vi.fn())
 vi.mock('../features/tasks/api', async (original) => ({
   ...(await original<typeof import('../features/tasks/api')>()),

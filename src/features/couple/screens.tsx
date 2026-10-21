@@ -1,3 +1,4 @@
+import { RitualsSection } from '../rituals/screens'
 import { useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -87,6 +88,9 @@ export function CreateSpaceScreen() {
       await queryClient.invalidateQueries({ queryKey: ['task-workspace'] })
       await queryClient.invalidateQueries({ queryKey: ['reward-store'] })
       await queryClient.invalidateQueries({ queryKey: ['couple-goals'] })
+      queryClient.removeQueries({ queryKey: ['rituals'] })
+      queryClient.removeQueries({ queryKey: ['ritual-history'] })
+      queryClient.removeQueries({ queryKey: ['ritual-summary'] })
       queryClient.removeQueries({ queryKey: ['statistics'] })
       queryClient.removeQueries({ queryKey: ['joint-history'] })
       navigate('/us', { replace: true })
@@ -266,6 +270,9 @@ export function AcceptInvitationScreen() {
       await queryClient.invalidateQueries({ queryKey: ['task-workspace'] })
       await queryClient.invalidateQueries({ queryKey: ['reward-store'] })
       await queryClient.invalidateQueries({ queryKey: ['couple-goals'] })
+      queryClient.removeQueries({ queryKey: ['rituals'] })
+      queryClient.removeQueries({ queryKey: ['ritual-history'] })
+      queryClient.removeQueries({ queryKey: ['ritual-summary'] })
       queryClient.removeQueries({ queryKey: ['statistics'] })
       queryClient.removeQueries({ queryKey: ['joint-history'] })
       navigate(accept ? '/us' : '/', {
@@ -357,6 +364,9 @@ export function CoupleScreen() {
       await queryClient.invalidateQueries({ queryKey: ['task-workspace'] })
       await queryClient.invalidateQueries({ queryKey: ['reward-store'] })
       await queryClient.invalidateQueries({ queryKey: ['couple-goals'] })
+      queryClient.removeQueries({ queryKey: ['rituals'] })
+      queryClient.removeQueries({ queryKey: ['ritual-history'] })
+      queryClient.removeQueries({ queryKey: ['ritual-summary'] })
       queryClient.removeQueries({ queryKey: ['statistics'] })
       queryClient.removeQueries({ queryKey: ['joint-history'] })
     },
@@ -364,6 +374,7 @@ export function CoupleScreen() {
   return (
     <div className="space-y-5">
       <CoupleStatus />
+      <RitualsSection />
       {!query.isPending && !query.isError && (
         <StatisticsSection
           context={
