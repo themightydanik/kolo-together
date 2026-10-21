@@ -3687,3 +3687,312 @@ test('ritual open limit is enforced under concurrent creation and closing frees 
  assert.equal((await pool.query("select count(*) from public.couple_rituals where status in ('pending','active','paused')")).rows[0].count,'50')
  assert.equal((await pool.query("select count(*) from public.couple_rituals where status='closed'")).rows[0].count,'1')
 })
+
+// Stage 8: emotional facts never enter reward ledgers.
+const ec = async (n, action, id=null, expected=0, payload={}, request=randomUUID()) =>
+ (await asUser(n,'select public.connection_action($1,$2,$3,$4,$5) as data',[action,id,expected,payload,request]))[0].data
+const er = async(n,view='home',id=null,cursor=null)=>(await asUser(n,'select public.connection_read($1,$2,$3) as data',[view,id,cursor]))[0].data.data
+const epair=async()=>{await create(1);await resolve(2,await invite(1,2))}
+const game=async()=>{await epair();const s=await ec(1,'start_game');await ec(2,'accept',s.id);return s.id}
+const quizAnswers=async(id)=>Object.fromEntries((await pool.query("select content from public.connection_catalog where kind='questionnaire' and id=$1",[id])).rows[0].content.questions.map(q=>[q.id,q.type==='scale'?'4':'talk']))
+const moodPayload=(day,shared=false)=>({day,mood:'calm',intensity:3,note:'Мій день',support:true,shared})
+test('connection catalog: 150 unique original Ukrainian cards, 30 per category, eight ten-question questionnaires',async()=>{
+ const cards=(await pool.query("select content from public.connection_catalog where kind='card'")).rows.map(r=>r.content)
+ assert.equal(cards.length,150);assert.equal(new Set(cards.map(c=>c.text)).size,150)
+ for(const c of ['us','dessert','trust','heat','secret'])assert.equal(cards.filter(x=>x.category===c).length,30)
+ assert.ok(cards.every(c=>c.text.length>25&&c.text.endsWith('?')))
+ const quizzes=(await pool.query("select content from public.connection_catalog where kind='questionnaire'")).rows.map(r=>r.content)
+ assert.equal(quizzes.length,8);assert.ok(quizzes.every(q=>q.questions.length===10));assert.equal(new Set(quizzes.flatMap(q=>q.questions.map(x=>x.id))).size,80)
+})
+test('mood own UTC upsert, request replay, private records never appear in partner home or direct RLS',async()=>{
+ await epair();const day=(await er(1)).today,key=randomUUID(),p=moodPayload(day)
+ await ec(1,'mood',null,0,p,key);await ec(1,'mood',null,0,p,key)
+ assert.equal((await er(1)).moods.length,1);assert.equal((await er(2)).moods.length,0);assert.equal((await er(2)).partner_mood,null)
+ assert.equal((await asUser(2,'select * from public.connection_moods')).length,0)
+ await assert.rejects(ec(2,'react',null,0,{day,reaction:'here'}),/connection_unavailable/)
+ await ec(1,'mood',null,1,moodPayload(day,true));assert.equal((await er(2)).partner_mood.note,'Мій день')
+ await ec(2,'react',null,0,{day,reaction:'here'});await ec(2,'react',null,0,{day,reaction:'hug'})
+ assert.equal((await er(1)).reactions.length,1)
+ await ec(1,'mood',null,2,moodPayload(day,false));assert.equal((await er(2)).partner_mood,null);assert.equal((await er(1)).reactions.length,0)
+ await assert.rejects(ec(1,'mood',null,0,moodPayload('2000-01-01')),/connection_period_changed/)
+})
+test('mood UTC boundary is evaluated after locks; previous-day retry cannot create a new day',async()=>{
+ try{
+ await pool.query("create or replace function public.connection_clock() returns timestamptz language sql volatile set search_path='' as $$select '2026-12-31 23:59:59Z'::timestamptz$$")
+ await ec(1,'mood',null,0,moodPayload('2026-12-31'))
+ await pool.query("create or replace function public.connection_clock() returns timestamptz language sql volatile set search_path='' as $$select '2027-01-01 00:00:00Z'::timestamptz$$")
+ await assert.rejects(ec(1,'mood',null,0,moodPayload('2026-12-31')),/connection_period_changed/)
+ await ec(1,'mood',null,0,moodPayload('2027-01-01'));assert.equal((await pool.query('select count(*)::int n from public.connection_moods')).rows[0].n,2)
+ }finally{await pool.query("create or replace function public.connection_clock() returns timestamptz language sql volatile set search_path='' as $$select clock_timestamp()$$")}
+})
+test('questionnaire independent drafts, explicit disclosure, semantic validation and answer deletion',async()=>{
+ await epair();const {id}=await ec(1,'start_questionnaire',null,0,{catalog:'care'});const answers=await quizAnswers('care')
+ await assert.rejects(ec(1,'resume',id),/connection_changed/)
+ await assert.rejects(ec(1,'accept',id),/connection_changed/)
+ await ec(2,'accept',id)
+ await ec(1,'save',id,0,{slot:'0',answers:{'care-01':'4'}})
+ assert.equal((await er(2,'session',id)).answers[0].draft,null)
+ assert.equal((await asUser(2,'select * from public.connection_answers')).length,0)
+ await assert.rejects(ec(1,'submit',id,1,{slot:'0',answers,publish:false}),/connection_consent_required/)
+ await assert.rejects(ec(1,'submit',id,1,{slot:'0',answers:{...answers,'care-01':null},publish:true}),/connection_invalid/)
+ await assert.rejects(ec(1,'submit',id,1,{slot:'0',answers:{...answers,evil:'4'},publish:true}),/connection_invalid/)
+ await ec(1,'submit',id,1,{slot:'0',answers,publish:true})
+ assert.equal((await er(2,'session',id)).answers[0].draft,null)
+ await ec(2,'submit',id,0,{slot:'0',answers,publish:true})
+ assert.equal((await er(2,'session',id)).session.status,'completed');assert.equal((await asUser(2,'select * from public.connection_answers')).length,2)
+ await ec(1,'erase_answers',id);assert.equal((await er(2,'session',id)).answers.length,1)
+ assert.equal((await er(2,'session',id)).session.status,'closed')
+ const journal=(await pool.query('select intent from public.connection_requests')).rows
+ assert.ok(journal.every(r=>typeof r.intent==='string'&&r.intent.length===64),'journals must not retain deleted sensitive answers')
+})
+test('start request fences survive changed session status, concurrent creation and unknown-response retries',async()=>{
+ await epair();const key=randomUUID(),args={catalog:'talk'}
+ const results=await Promise.all([ec(1,'start_questionnaire',null,0,args,key),ec(1,'start_questionnaire',null,0,args,key)])
+ assert.equal(results[0].id,results[1].id);await ec(2,'decline',results[0].id)
+ assert.equal((await ec(1,'start_questionnaire',null,0,args,key)).id,results[0].id)
+ await assert.rejects(ec(1,'start_questionnaire',null,0,args),/connection_changed/)
+ await assert.rejects(ec(1,'start_questionnaire',null,0,{catalog:'care'},key),/connection_conflict/)
+ assert.equal((await er(1,'request',key)).id,results[0].id)
+})
+test('game shuffles one shared 150-card permutation only on acceptance; next-card CAS handles concurrent and lost responses',async()=>{
+ const id=await game(),deck=await pool.query('select * from public.connection_deck where session_id=$1',[id]);assert.equal(deck.rows.length,150)
+ const r=await Promise.allSettled([ec(1,'draw',id,0),ec(2,'draw',id,0)])
+ assert.equal(r.filter(x=>x.status==='fulfilled').length,1);assert.equal((await er(1,'session',id)).session.position,1)
+ const card=(await er(1,'session',id)).card;assert.equal((await er(2,'session',id)).card.id,card.id)
+ assert.ok(!['heat','secret'].includes(card.category));await assert.rejects(ec(1,'draw',id,1),/connection_not_ready/)
+ await ec(1,'save',id,0,{slot:'1',answers:'Чернетка'});assert.equal((await er(2,'session',id)).answers[0].draft,null)
+ await ec(1,'submit',id,1,{slot:'1',answers:'Теплі слова',publish:true});assert.equal((await er(2,'session',id)).answers[0].draft,null)
+ await ec(2,'skip',id,0,{slot:'1'});assert.equal((await er(2,'session',id)).answers[0].draft,'Теплі слова')
+ const key=randomUUID();await ec(1,'draw',id,1,{},key);await ec(1,'draw',id,1,{},key)
+ assert.equal((await er(2,'session',id)).session.position,2);assert.equal((await er(1,'history',id)).items.length,1)
+ await ec(1,'notify',id,2);await ec(1,'notify',id,2);assert.equal((await er(2)).events.length,1)
+ await ec(2,'ack',id,2);assert.equal((await er(2)).events.length,0)
+})
+test('all 150 cards once, mutually enabled intimate categories, completed history and new deck preserve old game',async()=>{
+ const id=await game();await ec(1,'opt',id,0,{enabled:true});await ec(2,'opt',id,0,{enabled:true})
+ const seen=new Set()
+ for(let i=1;i<=150;i++){
+  await ec(1,'draw',id,i-1);const d=await er(2,'session',id);seen.add(d.card.id)
+  await Promise.all([ec(1,'skip',id,0,{slot:String(i)}),ec(2,'skip',id,0,{slot:String(i)})])
+ }
+ assert.equal(seen.size,150);await ec(2,'draw',id,150);assert.equal((await er(1,'session',id)).session.status,'completed')
+ let h=await er(1,'history',id),count=h.items.length;while(h.next_cursor){h=await er(1,'history',id,h.next_cursor);count+=h.items.length}assert.equal(count,150)
+ assert.equal((await er(1,'card-150',id)).slot,150)
+ const newer=await ec(1,'start_game',null,1);await ec(2,'accept',newer.id)
+ assert.equal((await pool.query('select count(*)::int n from public.connection_deck')).rows[0].n,300)
+ assert.equal((await er(1,'session',id)).session.status,'completed')
+})
+test('locked categories cannot be read or selected; pause, skip, close and no consent coercion',async()=>{
+ const id=await game();await ec(1,'opt',id,0,{enabled:true})
+ for(let i=1;i<=90;i++){
+ await ec(1,'draw',id,i-1);assert.ok(!['heat','secret'].includes((await er(2,'session',id)).card.category))
+ await ec(1,'skip',id,0,{slot:String(i)});await ec(2,'skip',id,0,{slot:String(i)})
+ }
+ await assert.rejects(ec(1,'draw',id,90),/connection_categories_locked/)
+ await ec(1,'pause',id);await assert.rejects(ec(2,'draw',id,90),/connection_changed/);await ec(2,'resume',id)
+ await ec(2,'close',id);assert.equal((await er(1,'session',id)).session.status,'closed')
+})
+test('leave/rejoin/new partner revoke shared drafts, moods, events, history and old cursor while own data remain private',async()=>{
+ const id=await game();const day=(await er(1)).today;await ec(1,'mood',null,0,moodPayload(day,true));await ec(1,'draw',id,0);await ec(1,'notify',id,1)
+ await ec(1,'save',id,0,{slot:'1',answers:'Приватно'})
+ const context=(await asUser(1,"select public.connection_read('home') as x"))[0].x.context
+ await asUser(2,'select public.leave_couple_space()')
+ await assert.rejects(er(1,'session',id),/connection_unavailable/);assert.equal((await er(1)).moods[0].shared,false)
+ await resolve(2,await invite(1,2));await assert.rejects(er(2,'session',id),/connection_unavailable/)
+ await asUser(2,'select public.leave_couple_space()');await resolve(3,await invite(1,3))
+ assert.deepEqual((await er(3,'sessions')).items,[]);assert.equal((await er(3)).partner_mood,null);assert.equal((await er(3)).events.length,0)
+ await assert.rejects(er(1,'sessions',null,{actor:uid(1),context,view:'sessions',id:'',ceiling:new Date().toISOString()}),/connection_cursor_invalid/)
+ assert.equal((await asUser(1,'select * from public.connection_answers')).length,1)
+ await ec(1,'delete_own_history',id);assert.equal((await asUser(1,'select * from public.connection_answers')).length,0)
+})
+test('connection ACL: only verified RPCs, no direct writes/private helpers/deck/other-space facts, no economic change',async()=>{
+ await pool.query(await readFile('supabase/tests/connection-privileges.sql','utf8'));
+ const id=await game();await create(3);await resolve(4,await invite(3,4))
+ await assert.rejects(er(3,'session',id),/connection_unavailable/)
+ for(const table of ['connection_moods','connection_reactions','connection_sessions','connection_answers','connection_catalog','connection_deck','connection_draws','connection_requests','connection_events']){
+ assert.equal((await pool.query('select relrowsecurity from pg_class where oid=$1::regclass',['public.'+table])).rows[0].relrowsecurity,true)
+ await assert.rejects(asUser(1,`delete from public.${table}`),/permission denied/)
+ }
+ for(const f of ['connection_clock()','connection_departure()'])for(const role of ['anon','authenticated'])assert.equal((await pool.query('select has_function_privilege($1,$2,$3) as ok',[role,'public.'+f,'EXECUTE'])).rows[0].ok,false)
+ await assert.rejects(asUser(null,"select public.connection_read('home')"),/permission denied/)
+ await assert.rejects(er(8),/verified_account_required/)
+ assert.equal((await pool.query('select count(*)::int n from public.reward_ledger')).rows[0].n,0)
+ assert.equal((await pool.query('select count(*)::int n from public.coin_transactions')).rows[0].n,0)
+ assert.equal((await pool.query('select count(*)::int n from public.goal_reward_ledger')).rows[0].n,0)
+})
+test('connection transactional rollback includes COMMIT failure and concurrently serialized draw/leave',async()=>{
+ const id=await game(),key=randomUUID()
+ try{
+ await pool.query("create function public.fail_connection_commit() returns trigger language plpgsql as $$begin raise exception 'test_commit_failure'; end$$; create constraint trigger fail_connection_commit after insert on public.connection_draws deferrable initially deferred for each row execute function public.fail_connection_commit()")
+ await assert.rejects(ec(1,'draw',id,0,{},key),/test_commit_failure/)
+ assert.equal((await er(1,'session',id)).session.position,0);assert.equal(await er(1,'request',key),null)
+ }finally{await pool.query('drop trigger fail_connection_commit on public.connection_draws; drop function public.fail_connection_commit()')}
+ await ec(1,'draw',id,0,{},key)
+ const result=await Promise.allSettled([ec(1,'skip',id,0,{slot:'1'}),asUser(2,'select public.leave_couple_space()')]);assert.ok(result.some(x=>x.status==='fulfilled'))
+ const state=(await pool.query('select status from public.connection_sessions where id=$1',[id])).rows[0].status;assert.equal(state,'closed')
+})
+test('revoking intimate-category consent hides its card and partner answers through RPC and direct RLS',async()=>{
+ const id=await game();await ec(1,'opt',id,0,{enabled:true});await ec(2,'opt',id,0,{enabled:true})
+ await pool.query("insert into public.connection_draws values($1,1,'heat-01')",[id]);await pool.query('update public.connection_sessions set position=1 where id=$1',[id]);await pool.query("update public.connection_deck set drawn=true where session_id=$1 and card_id='heat-01'",[id])
+ await ec(1,'submit',id,0,{slot:'1',answers:'Відповідь один',publish:true});await ec(2,'submit',id,0,{slot:'1',answers:'Відповідь два',publish:true})
+ assert.equal((await asUser(1,'select * from public.connection_answers')).length,2)
+ await ec(2,'opt',id,0,{enabled:false})
+ assert.equal((await er(1,'session',id)).card,null);assert.equal((await er(1,'card-1',id)),null)
+ assert.equal((await er(1,'session',id)).answers.find(x=>x.user_id===uid(2)).draft,null)
+ assert.equal((await asUser(1,'select * from public.connection_answers')).length,1)
+})
+test('two independent questionnaire confirmations race to one report, and mood UTC day is sampled after a real space lock wait',async()=>{
+ await epair();const {id}=await ec(1,'start_questionnaire',null,0,{catalog:'home'});await ec(2,'accept',id);const answers=await quizAnswers('home')
+ await Promise.all([ec(1,'submit',id,0,{slot:'0',answers,publish:true}),ec(2,'submit',id,0,{slot:'0',answers,publish:true})]);assert.equal((await er(1,'session',id)).session.status,'completed')
+ await pool.query("create table public.ec_review_clock(value timestamptz);insert into public.ec_review_clock values('2026-12-31T23:59:59Z');create or replace function public.connection_clock() returns timestamptz language sql volatile set search_path='' as $$select value from public.ec_review_clock$$")
+ const blocker=await pool.connect()
+ try{
+ await blocker.query('begin');await blocker.query('select id from public.couple_spaces where id=(select space_id from public.couple_members where user_id=$1 and left_at is null) for update',[uid(1)])
+ const waiting=ec(1,'mood',null,0,moodPayload('2026-12-31')).then(()=>'',e=>e.message)
+ for(let attempt=0;attempt<100;attempt++){if((await pool.query("select 1 from pg_stat_activity where wait_event_type='Lock' and query like '%connection_action%'")).rowCount)break;if(attempt===99)throw Error('Expected an actual space lock wait');await new Promise(r=>setTimeout(r,10))}
+ await pool.query("update public.ec_review_clock set value='2027-01-01T00:00:00Z'");await blocker.query('commit');assert.match(await waiting,/connection_period_changed/)
+ assert.equal((await pool.query('select count(*)::int n from public.connection_moods')).rows[0].n,0)
+ }finally{await blocker.query('rollback');blocker.release();await pool.query("create or replace function public.connection_clock() returns timestamptz language sql volatile set search_path='' as $$select clock_timestamp()$$;drop table public.ec_review_clock")}
+})
+test('local account deletion with two shared moods neither blocks Auth cascade nor leaks the surviving owner record',async()=>{
+ await epair();const day=(await er(1)).today
+ await ec(1,'mood',null,0,moodPayload(day,true));await ec(2,'mood',null,0,moodPayload(day,true))
+ const {id}=await ec(1,'start_game');await ec(2,'accept',id)
+ await pool.query('delete from auth.users where id=$1',[uid(1)])
+ const own=(await er(2)).moods[0];assert.equal(own.note,'Мій день');assert.equal(own.shared,false)
+ assert.equal((await er(2,'sessions')).items.length,0)
+})
+
+// Additional PR8 security review: reproduce report access after terminal transitions.
+async function sharedReviewCard(id,slot){
+ await ec(1,'submit',id,0,{slot:String(slot),answers:'Власний текст першого',publish:true})
+ await ec(2,'submit',id,0,{slot:String(slot),answers:'Власний текст другого',publish:true})
+}
+test('review: closing a game revokes all previously shared answers, not only future draws',async()=>{
+ const id=await game();await ec(1,'draw',id,0);await sharedReviewCard(id,1)
+ assert.equal((await asUser(2,'select * from public.connection_answers where session_id=$1',[id])).length,2)
+ await ec(1,'close',id)
+ for(const n of [1,2]){
+  const rows=await asUser(n,'select * from public.connection_answers where session_id=$1',[id])
+  assert.equal(rows.length,1,'closed session must expose only the reader own text')
+  assert.equal(rows[0].user_id,uid(n))
+  assert.ok((await er(n,'session',id)).answers.every(a=>a.user_id===uid(n)))
+  assert.ok((await er(n,'card-1',id)).answers.every(a=>a.user_id===uid(n)))
+ }
+})
+test('review: unpublishing current card also revokes older joint reports in that game',async()=>{
+ const id=await game();await ec(1,'draw',id,0);await sharedReviewCard(id,1);await ec(1,'draw',id,1);await sharedReviewCard(id,2)
+ await ec(1,'unpublish',id,1,{slot:'2'})
+ for(const n of [1,2]){
+  assert.ok((await asUser(n,'select * from public.connection_answers where session_id=$1',[id])).every(a=>a.user_id===uid(n)))
+  assert.ok((await er(n,'history',id)).items.every(h=>(h.answers??[]).every(a=>a.user_id===uid(n))))
+ }
+})
+test('review: every read branch and direct RLS isolate former partners across leave, rejoin and two new couples',async()=>{
+ await epair();const request=randomUUID(),id=(await ec(1,'start_game',null,0,{},request)).id;await ec(2,'accept',id)
+ await ec(1,'draw',id,0);await sharedReviewCard(id,1);await ec(1,'draw',id,1);await sharedReviewCard(id,2);await ec(1,'notify',id,2)
+ const q=(await ec(1,'start_questionnaire',null,0,{catalog:'care'})).id;await ec(2,'accept',q)
+ await ec(1,'submit',q,0,{slot:'0',answers:await quizAnswers('care'),publish:true});await ec(2,'submit',q,0,{slot:'0',answers:await quizAnswers('care'),publish:true})
+ const day=(await er(1)).today;await ec(1,'mood',null,0,moodPayload(day,true));await ec(2,'mood',null,0,moodPayload(day,false));await ec(2,'react',null,0,{day,reaction:'here'})
+ const context=(await asUser(1,"select public.connection_read('home') x"))[0].x.context
+ const oldCursor={actor:uid(1),context,view:'history',id,slot:2,ceiling:new Date().toISOString()}
+ assert.equal((await er(1,'history',id,oldCursor)).items.length,1)
+ const checkIsolated=async actors=>{
+  for(const n of actors){
+   assert.equal((await asUser(n,'select public.connection_access($1) ok',[id]))[0].ok,false)
+   assert.equal((await asUser(n,'select public.connection_answer_access($1,$2,1) ok',[id,uid(n===1?2:1)]))[0].ok,false)
+   assert.equal((await asUser(n,'select public.connection_mood_access($1,$2) ok',[uid(n===1?2:1),day]))[0].ok,false)
+   assert.deepEqual(await asUser(n,'select id from public.connection_sessions where id=any($1::uuid[])',[[id,q]]),[])
+   const direct=await asUser(n,'select * from public.connection_answers where session_id=any($1::uuid[])',[[id,q]])
+   assert.ok(direct.every(a=>a.user_id===uid(n)),'only the author own private archive remains')
+   const moods=await asUser(n,'select * from public.connection_moods');assert.ok(moods.every(m=>m.user_id===uid(n)))
+   assert.deepEqual(await asUser(n,'select * from public.connection_events where session_id=$1',[id]),[])
+   assert.deepEqual(await asUser(n,'select * from public.connection_reactions where owner_id<>$1',[uid(n)]),[])
+   const home=await er(n);assert.equal(home.partner_mood,null);assert.equal(home.active_game_id,null);assert.deepEqual(home.events,[])
+   assert.deepEqual((await er(n,'sessions')).items,[])
+   for(const sid of [id,q])for(const view of ['session','history','card-1','card-2'])await assert.rejects(er(n,view,sid),/connection_unavailable/)
+  }
+  assert.deepEqual(await er(1,'request',request),{},'own receipt confirms execution without an old session identifier')
+  assert.equal(await er(2,'request',request),null)
+  assert.deepEqual(await ec(1,'start_game',null,0,{},request),{},'same-key replay cannot leak stale identifiers or create a new session')
+  await assert.rejects(er(1,'history',id,oldCursor),/connection_cursor_invalid/)
+ }
+ await asUser(2,'select public.leave_couple_space()');await checkIsolated([1,2])
+ await resolve(2,await invite(1,2));await checkIsolated([1,2])
+ await asUser(2,'select public.leave_couple_space()');await create(2);await resolve(3,await invite(2,3));await resolve(4,await invite(1,4));await checkIsolated([1,2,3,4])
+ // New facts in each new couple must remain invisible to the former partner too.
+ const freshA=(await ec(1,'start_game',null,(await er(1)).game_version)).id;await ec(4,'accept',freshA);await ec(1,'draw',freshA,0)
+ const freshB=(await ec(2,'start_game',null,(await er(2)).game_version)).id;await ec(3,'accept',freshB);await ec(2,'draw',freshB,0)
+ await ec(1,'mood',null,1,{...moodPayload(day,true),note:'Новий простір першого'})
+ await ec(2,'mood',null,1,{...moodPayload(day,true),note:'Новий простір другого'})
+ for(const [sid,outsiders,owner] of [[freshA,[2,3],1],[freshB,[1,4],2]])for(const n of outsiders){
+  assert.equal((await asUser(n,'select public.connection_access($1) ok',[sid]))[0].ok,false)
+  assert.equal((await asUser(n,'select public.connection_mood_access($1,$2) ok',[uid(owner),day]))[0].ok,false)
+  assert.equal((await asUser(n,'select * from public.connection_sessions where id=$1',[sid])).length,0)
+  for(const view of ['session','history','card-1'])await assert.rejects(er(n,view,sid),/connection_unavailable/)
+ }
+ assert.equal((await er(3)).partner_mood.note,'Новий простір другого');assert.equal((await er(4)).partner_mood.note,'Новий простір першого')
+ // A forged cursor with the NEW epoch still cannot authorize an old session.
+ const now=(await asUser(1,"select public.connection_read('home') x"))[0].x.context
+ await assert.rejects(er(1,'history',id,{...oldCursor,context:now}),/connection_unavailable/)
+})
+test('review: both actors can revoke completed questionnaires via every terminal operation; repeated reads and old submit keys never restore reports',async()=>{
+ await epair()
+ for(const actor of [1,2])for(const action of ['close','erase_answers','unpublish','delete_own_history']){
+  const id=(await ec(1,'start_questionnaire',null,(await er(1)).questionnaire_version,{catalog:'talk'})).id;await ec(2,'accept',id)
+  const answers=await quizAnswers('talk'),keys=[randomUUID(),randomUUID()]
+  for(const n of [1,2])await ec(n,'submit',id,0,{slot:'0',answers,publish:true},keys[n-1])
+  assert.equal((await er(1,'session',id)).session.status,'completed');assert.equal((await asUser(actor,'select * from public.connection_answers where session_id=$1',[id])).length,2)
+  await ec(actor,action,id,action==='unpublish'?1:0,action==='unpublish'?{slot:'0'}:{})
+  assert.equal((await pool.query('select count(*)::int n from public.connection_answers where session_id=$1 and user_id=$2',[id,uid(actor)])).rows[0].n,0)
+  assert.equal((await pool.query('select count(*)::int n from public.connection_answers where session_id=$1',[id])).rows[0].n,1)
+  for(let read=0;read<2;read++)for(const n of [1,2]){
+   assert.ok((await asUser(n,'select * from public.connection_answers where session_id=$1',[id])).every(a=>a.user_id===uid(n)))
+   const d=await er(n,'session',id);assert.equal(d.session.status,'closed');assert.ok(d.answers.every(a=>a.user_id===uid(n)))
+   assert.deepEqual((await er(n,'history',id)).items,[]);assert.equal(await er(n,'card-1',id),null)
+  }
+  await ec(actor,'submit',id,0,{slot:'0',answers,publish:true},keys[actor-1])
+  assert.equal((await pool.query('select count(*)::int n from public.connection_answers where session_id=$1',[id])).rows[0].n,1)
+ }
+})
+test('review: every game revocation hides all older shared answers and aggregates for both accounts without deleting the other author data',async()=>{
+ await epair()
+ for(const actor of [1,2])for(const action of ['close','erase_answers','unpublish','delete_own_history']){
+  const id=(await ec(1,'start_game',null,(await er(1)).game_version)).id;await ec(2,'accept',id)
+  await ec(1,'draw',id,0);await sharedReviewCard(id,1);await ec(1,'draw',id,1);await sharedReviewCard(id,2)
+  await ec(actor,action,id,action==='unpublish'?1:0,action==='unpublish'?{slot:'2'}:{})
+  const ownerCount=action==='close'?2:action==='unpublish'?1:0
+  assert.equal((await pool.query('select count(*)::int n from public.connection_answers where session_id=$1 and user_id=$2',[id,uid(actor)])).rows[0].n,ownerCount)
+  assert.equal((await pool.query('select count(*)::int n from public.connection_answers where session_id=$1 and user_id<>$2',[id,uid(actor)])).rows[0].n,2)
+  for(let pass=0;pass<2;pass++)for(const n of [1,2]){
+   const direct=await asUser(n,'select * from public.connection_answers where session_id=$1',[id]);assert.ok(direct.every(a=>a.user_id===uid(n)))
+   const d=await er(n,'session',id);assert.ok(d.answers.every(a=>a.user_id===uid(n)));assert.equal(d.answer_count,direct.length)
+   const h=await er(n,'history',id);assert.ok(h.items.every(i=>(i.answers??[]).every(a=>a.user_id===uid(n))))
+   for(const slot of [1,2])assert.ok((await er(n,'card-'+slot,id)).answers?.every(a=>a.user_id===uid(n))??true)
+  }
+ }
+})
+test('review: exact one-card progress with simultaneous draws, UUID replay, lost storage and status changes',async()=>{
+ const id=await game();await ec(1,'draw',id,0);await sharedReviewCard(id,1)
+ const key=randomUUID(),other=randomUUID(),r=await Promise.allSettled([ec(1,'draw',id,1,{},key),ec(2,'draw',id,1,{},other)])
+ assert.equal(r.filter(x=>x.status==='fulfilled').length,1)
+ const winner=r[0].status==='fulfilled'?1:2,winningKey=winner===1?key:other
+ const check=async()=>{const d=await er(1,'session',id);assert.equal(d.session.position,2);assert.equal(d.remaining,148);assert.equal((await pool.query('select count(*)::int n from public.connection_draws where session_id=$1',[id])).rows[0].n,2);assert.equal((await pool.query('select count(*)::int n from public.connection_deck where session_id=$1 and drawn',[id])).rows[0].n,2)}
+ await check();await ec(winner,'draw',id,1,{},winningKey);await assert.rejects(ec(winner,'draw',id,1,{},randomUUID()),/connection_changed/);await check()
+ await ec(2,'pause',id);await ec(winner,'draw',id,1,{},winningKey);await assert.rejects(ec(1,'draw',id,2),/connection_changed/);await check()
+ await ec(1,'close',id);await ec(winner,'draw',id,1,{},winningKey);await assert.rejects(ec(2,'draw',id,2),/connection_changed/);await check()
+})
+for(const category of ['heat','secret'])test(`review: ${category} requires both current consents in every read path, including after completion and re-enabling`,async()=>{
+ const id=await game()
+ await pool.query('insert into public.connection_draws values($1,1,$2)',[id,category+'-01']);await pool.query('update public.connection_sessions set position=1 where id=$1',[id]);await pool.query('update public.connection_deck set drawn=true where session_id=$1 and card_id=$2',[id,category+'-01'])
+ const masked=async()=>{for(const n of [1,2]){assert.equal((await er(n,'session',id)).card,null);assert.equal(await er(n,'card-1',id),null);assert.deepEqual((await er(n,'history',id)).items,[]);assert.ok((await asUser(n,'select * from public.connection_answers where session_id=$1',[id])).every(a=>a.user_id===uid(n)))}}
+ await masked();await ec(1,'opt',id,0,{enabled:true});await masked();await ec(2,'opt',id,0,{enabled:true});await sharedReviewCard(id,1)
+ assert.equal((await asUser(1,'select * from public.connection_answers where session_id=$1',[id])).length,2)
+ await ec(2,'opt',id,0,{enabled:false});await masked();await ec(2,'opt',id,0,{enabled:true})
+ // Card content can reappear, old publication must not.
+ assert.ok((await er(1,'session',id)).card);assert.equal((await asUser(1,'select * from public.connection_answers where session_id=$1',[id])).length,1)
+ await pool.query("update public.connection_sessions set status='completed' where id=$1",[id])
+ await ec(1,'opt',id,0,{enabled:false});await masked()
+ assert.equal((await pool.query('select count(*)::int n from public.connection_answers where session_id=$1',[id])).rows[0].n,2,'consent withdrawal preserves private own texts')
+ await assert.rejects(ec(1,'opt',id,0,{enabled:true}),/connection_invalid/)
+})

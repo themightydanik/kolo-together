@@ -1,3 +1,4 @@
+import { ConnectionHub, ConnectionDetail, DemoConnection, ConnectionLinks } from './features/connection/screens'
 import { DemoRituals } from './features/rituals/screens'
 import { DemoStatistics } from './features/statistics/screens'
 import { useState } from 'react'
@@ -264,7 +265,7 @@ function DemoWorkspace() {
         element={
           <>
             <Dashboard tasks={tasks} toggle={toggle} />
-            <DemoRituals />
+            <DemoRituals /><ConnectionLinks />
           </>
         }
       />
@@ -285,7 +286,7 @@ function DemoWorkspace() {
         element={
           <div className="space-y-5">
             <DemoStatistics />
-            <DemoRituals />
+            <DemoRituals /><ConnectionLinks />
             <Card>
               <div className="mb-5 flex gap-2">
                 <span className="avatar">А</span>
@@ -312,6 +313,7 @@ function DemoWorkspace() {
           </div>
         }
       />
+      <Route path="/us/connection/:section" element={<DemoConnection />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
@@ -339,6 +341,10 @@ function RealWorkspace() {
             </div>
           }
         />
+        <Route path="/us/connection/mood" element={<ConnectionHub mode="mood" />} />
+        <Route path="/us/connection/questionnaires" element={<ConnectionHub mode="questionnaires" />} />
+        <Route path="/us/connection/game" element={<ConnectionHub mode="game" />} />
+        <Route path="/us/connection/session/:connectionId" element={<ConnectionDetail />} />
         <Route path="/profile" element={<ProfileScreen />} />
         <Route path="/space/create" element={<CreateSpaceScreen />} />
         <Route path="/space/invite" element={<InvitePartnerScreen />} />

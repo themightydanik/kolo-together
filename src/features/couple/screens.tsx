@@ -1,3 +1,4 @@
+import { ConnectionLinks } from '../connection/screens'
 import { RitualsSection } from '../rituals/screens'
 import { useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router'
@@ -374,7 +375,7 @@ export function CoupleScreen() {
   return (
     <div className="space-y-5">
       <CoupleStatus />
-      <RitualsSection />
+      <RitualsSection /><ConnectionLinks />
       {!query.isPending && !query.isError && (
         <StatisticsSection
           context={
