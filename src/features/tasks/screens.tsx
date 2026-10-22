@@ -1,3 +1,4 @@
+import { TodayActivity } from '../activity/screens'
 import {
   PageHeader,
   SectionHeader,
@@ -470,6 +471,7 @@ export function TodayScreen() {
         description="Что хорошего мы можем сделать друг для друга?"
       />
       <TodayFocus pending={pending.length} hasPartner={data.hasPartner} />
+      <TodayActivity />
       <div className="today-progress">
         <span>Наш общий путь</span>
         <strong>{data.spaceId ? data.togetherXp : '—'} Together XP</strong>

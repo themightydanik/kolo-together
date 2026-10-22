@@ -100,6 +100,20 @@ try {
     `document.querySelector('main')?.textContent.includes('Почати гру')`,
   )
 
+  // PR10: confirmed source actions only; these are our own new local fixtures.
+  for (const title of ['Прогулятися разом', 'Обрати фільм для вечора'])
+    check(
+      await clients[0].rpc('create_task', {
+        p_request_id: randomUUID(),
+        p_title: title,
+        p_description: '',
+        p_kind: 'joint',
+        p_category: 'time',
+        p_difficulty: 'normal',
+        p_due_date: null,
+        p_recurrence: 'once',
+      }),
+    )
   await a.click('Почати гру')
   await a.until(
     `Array.from(document.querySelectorAll('a')).some(a=>a.getAttribute('href')?.startsWith('/us/connection/session/'))`,
@@ -108,7 +122,92 @@ try {
       `Array.from(document.querySelectorAll('a')).find(a=>a.getAttribute('href')?.startsWith('/us/connection/session/')).getAttribute('href')`,
     ),
     id = path.split('/').at(-1)
-  await b.call('Page.navigate', { url: origin.origin + path })
+  await b.call('Page.navigate', { url: origin.origin + '/activity' })
+  await b.until(
+    `Array.from(document.querySelectorAll('button')).some(x=>x.textContent.includes('Переглянути запрошення'))`,
+  )
+  const received = check(
+    await clients[1].rpc('list_couple_activity', { p_limit: 20 }),
+  ).items
+  const invitation = received.find(
+    (e) => e.kind === 'connection_invite' && e.source_id === id,
+  )
+  assert.ok(invitation)
+  await b.evaluate(
+    `document.querySelector('button[aria-label="Підтримую"]').click()`,
+  )
+  await b.until(
+    `document.querySelector('button[aria-label="Підтримую"]')?.getAttribute('aria-pressed')==='true'`,
+  )
+  assert.equal(
+    check(
+      await clients[0].rpc('list_couple_activity', { p_limit: 20 }),
+    ).items.filter((e) => e.kind === 'reaction').length,
+    1,
+  )
+  // Exercise real browser offline/reconnect; reconnect never queues a reaction.
+  await b.call('Network.enable')
+  await b.call('Network.emulateNetworkConditions', {
+    offline: true,
+    latency: 0,
+    downloadThroughput: 0,
+    uploadThroughput: 0,
+  })
+  await b.until(
+    `document.querySelector('main')?.textContent.includes('Зараз немає зв’язку')`,
+  )
+  assert.equal(
+    await b.evaluate(`!!document.querySelector('.activity-card')`),
+    false,
+  )
+  await b.call('Network.emulateNetworkConditions', {
+    offline: false,
+    latency: 0,
+    downloadThroughput: -1,
+    uploadThroughput: -1,
+  })
+  await b.until(`!!document.querySelector('.activity-card')`)
+  assert.equal(
+    check(
+      await clients[0].rpc('list_couple_activity', { p_limit: 20 }),
+    ).items.filter((e) => e.kind === 'reaction').length,
+    1,
+  )
+  for (const width of [390, 1280])
+    for (const dark of [false, true]) {
+      await b.call('Emulation.setDeviceMetricsOverride', {
+        width,
+        height: 960,
+        deviceScaleFactor: 1,
+        mobile: width < 500,
+      })
+      await b.evaluate(
+        `localStorage.setItem('kolo-theme','${dark ? 'dark' : 'light'}')`,
+      )
+      await b.call('Page.reload')
+      await b.until(`!!document.querySelector('.activity-card')`)
+      assert.equal(
+        await b.evaluate('document.documentElement.scrollWidth<=innerWidth'),
+        true,
+      )
+      const shot = await b.call('Page.captureScreenshot', { format: 'png' })
+      await writeFile(
+        join(artifacts, `activity-${width}-${dark ? 'dark' : 'light'}.png`),
+        Buffer.from(shot.data, 'base64'),
+      )
+    }
+  await b.call('Emulation.setDeviceMetricsOverride', {
+    width: 390,
+    height: 844,
+    deviceScaleFactor: 1,
+    mobile: true,
+  })
+  await b.click('Переглянути запрошення')
+  assert.ok(
+    check(
+      await clients[1].rpc('list_couple_activity', { p_limit: 20 }),
+    ).items.find((e) => e.id === invitation.id).read_at,
+  )
   await b.click('Прийняти запрошення')
   await a.call('Page.navigate', { url: origin.origin + path })
   await a.click('Витягнути першу картку')
@@ -244,6 +343,16 @@ try {
     'Author own private history remains',
   )
   check(await clients[1].rpc('leave_couple_space'))
+  for (const c of clients) {
+    assert.equal(
+      check(await c.rpc('list_couple_activity', { p_limit: 20 })).items.length,
+      0,
+    )
+    assert.equal(
+      check(await c.from('couple_activity_events').select('*')).length,
+      0,
+    )
+  }
   for (const browser of browsers) {
     await browser.call('Page.reload')
     await browser.until(
@@ -257,7 +366,7 @@ try {
     )
   }
   console.log(
-    'PASS: two isolated local Auth accounts in Chromium; five main routes, UI invitation and visible-card receipt, same active card, private persisted draft, blind publication, skip, concurrent next, lost sessionStorage/reload, closing shared history and leave',
+    'PASS: two isolated local Auth accounts in Chromium; five main routes, real inbox/reaction/offline/reconnect/screenshots, UI invitation and visible-card receipt, same active card, private persisted draft, blind publication, skip, concurrent next, lost sessionStorage/reload, closing shared history and leave',
   )
   console.log('Screenshots:', artifacts)
 } finally {

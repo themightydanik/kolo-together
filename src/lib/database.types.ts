@@ -23,7 +23,7 @@ import type {
   HistoryPage,
   HistoryCursor,
 } from '../features/statistics/model'
-/** Schema snapshot through 20261023120000_product_experience_catalog.sql.
+/** Schema snapshot through 20261024120000_couple_activity.sql.
  * Refresh with Supabase CLI (see docs/supabase.md) and review the diff. */
 export type Profile = {
   id: string
@@ -60,20 +60,11 @@ export type CoupleInvitation = {
 }
 export type TaskKind = 'personal' | 'proposal' | 'joint'
 export type TaskStatus =
-  | 'pending'
-  | 'active'
-  | 'completed'
-  | 'declined'
-  | 'cancelled'
+  'pending' | 'active' | 'completed' | 'declined' | 'cancelled'
 export type Difficulty = 'easy' | 'normal' | 'hard'
 export type Recurrence = 'once' | 'daily' | 'weekly'
 export type Category =
-  | 'care'
-  | 'home'
-  | 'communication'
-  | 'time'
-  | 'growth'
-  | 'other'
+  'care' | 'home' | 'communication' | 'time' | 'growth' | 'other'
 export type Task = {
   id: string
   request_id: string
@@ -137,12 +128,7 @@ export type CompletionResult = {
   together_xp: number
 }
 export type RewardCategory =
-  | 'care'
-  | 'romance'
-  | 'rest'
-  | 'fun'
-  | 'time'
-  | 'other'
+  'care' | 'romance' | 'rest' | 'fun' | 'time' | 'other'
 export type RewardOffer = {
   id: string
   request_id: string
@@ -199,19 +185,9 @@ export type CoinSummary = {
 }
 export type PurchaseAction = 'ready' | 'refuse' | 'cancel' | 'confirm'
 export type GoalCategory =
-  | 'travel'
-  | 'home'
-  | 'relationship'
-  | 'health'
-  | 'learning'
-  | 'other'
+  'travel' | 'home' | 'relationship' | 'health' | 'learning' | 'other'
 export type GoalStatus =
-  | 'pending'
-  | 'active'
-  | 'paused'
-  | 'completed'
-  | 'closed'
-  | 'declined'
+  'pending' | 'active' | 'paused' | 'completed' | 'closed' | 'declined'
 export type GoalChangeKind =
   | 'step_add'
   | 'step_edit'
@@ -300,6 +276,58 @@ type Table<Row, Insert, Update> = {
 export type Database = {
   public: {
     Tables: {
+      couple_activity_events: Table<
+        {
+          id: string
+          space_id: string
+          am: string
+          bm: string
+          actor_id: string
+          recipient_id: string
+          kind: import('../features/activity/model').ActivityKind
+          source_id: string
+          slot: number
+          created_at: string
+          read_at: string | null
+        },
+        never,
+        never
+      >
+      couple_activity_reactions: Table<
+        {
+          event_id: string
+          user_id: string
+          kind: import('../features/activity/model').ReactionKind
+          updated_at: string
+        },
+        never,
+        never
+      >
+      couple_activity_preferences: Table<
+        { user_id: string; reactions_enabled: boolean },
+        never,
+        never
+      >
+      couple_activity_requests: Table<
+        { user_id: string; request_id: string; intent: string },
+        never,
+        never
+      >
+      couple_activity_cursors: Table<
+        {
+          id: string
+          user_id: string
+          context: string
+          ceiling: string
+          last_at: string
+          last_id: string
+          expires_at: string
+          created_at: string
+        },
+        never,
+        never
+      >
+
       connection_catalog: Table<
         {
           kind: 'card' | 'questionnaire'
@@ -462,6 +490,27 @@ export type Database = {
     }
     Views: { goal_progress: { Row: GoalProgress; Relationships: [] } }
     Functions: {
+      activity_summary: { Args: Record<string, never>; Returns: Json }
+      list_couple_activity: {
+        Args: { p_cursor?: string | null; p_limit?: number }
+        Returns: Json
+      }
+      read_couple_activity: { Args: { p_id?: string | null }; Returns: Json }
+      set_activity_reaction: {
+        Args: {
+          p_event: string
+          p_kind: string | null
+          p_expected: string | null
+          p_request: string
+        }
+        Returns: undefined
+      }
+      set_activity_preferences: {
+        Args: { p_reactions_enabled: boolean }
+        Returns: undefined
+      }
+      activity_event_visible: { Args: { p_id: string }; Returns: boolean }
+
       connection_access: { Args: { p_id: string }; Returns: boolean }
       connection_mood_access: {
         Args: { p_user: string; p_day: string }

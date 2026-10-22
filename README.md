@@ -69,3 +69,9 @@ SDK намеренно не установлены. После выбора iOS/
 Пять вкладок сохранены; история, традиции и настройки доступны внутри «Мы». Новая pending SQL-миграция `20261023120000_product_experience_catalog.sql` добавляет выпуск карточек 2, сохраняя старые игры на 1. Удалённо не применяется автоматически. Дополнительных переменных окружения нет.
 
 Для browser tests: собрать демо (`npm run build` без VITE Supabase), запустить preview на 4173 и `npm run test:browser`. Нужны Chromium (`CHROMIUM_BIN`, по умолчанию `/usr/bin/chromium`) и установленный Playwright WebKit (`npx playwright install --with-deps webkit`). Suite включает pixel snapshots, маршруты, темы/размеры и Axe. Обновлять snapshots только после визуального просмотра обеих сторон карты в обоих движках.
+
+## Живое пространство пары / PR #10
+
+[Архитектура событий, приватность, сценарии и ручная проверка](docs/couple-activity-design.md). Колокольчик открывает центр событий; прочтение и четыре добровольные реакции согласованы сервером. Пять вкладок, согласия и экономика сохранены; push и paywall не добавлены.
+
+Pending SQL: `20261024120000_couple_activity.sql` (только отдельное ручное применение после review). Новых env нет. `npm run test:browser` проверяет демо в Chromium/WebKit. `KOLO_ACTIVITY_STATUS_FILE=/tmp/OWN-status.json npm run test:activity-browser` — реальные изолированные локальные Auth-аккаунты и configured preview на 4174; не используйте cloud status/production. Инструкции и снимки — в документе выше.

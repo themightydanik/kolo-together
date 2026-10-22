@@ -190,3 +190,50 @@ test('ritual demo remains readonly in both themes with a dedicated traditions de
     ).toHaveCount(0)
   }
 })
+
+test('activity inbox is accessible, readonly in demo, responsive in both themes and keeps five tabs', async ({
+  page,
+}) => {
+  const { default: AxeBuilder } = await import('@axe-core/playwright')
+  for (const width of [360, 390, 1280])
+    for (const dark of [false, true]) {
+      await page.setViewportSize({ width, height: 844 })
+      await page.goto('/')
+      await page.evaluate(
+        (d) => localStorage.setItem('kolo-theme', d ? 'dark' : 'light'),
+        dark,
+      )
+      await page.reload()
+      const bell = page.getByRole('link', { name: 'Події пари', exact: true })
+      await bell.focus()
+      await page.keyboard.press('Enter')
+      await expect(
+        page.getByRole('heading', { level: 1, name: 'Події пари' }),
+      ).toBeVisible()
+      await expect(page.getByText(/У демо ми не надсилаємо/)).toBeVisible()
+      await expect(
+        page
+          .getByRole('navigation', { name: 'Основная навигация' })
+          .getByRole('link'),
+      ).toHaveCount(5)
+      await expect(
+        page.getByRole('button', { name: 'Прочитати всі' }),
+      ).toHaveCount(0)
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true)
+      expect(
+        (
+          await new AxeBuilder({ page })
+            .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
+            .analyze()
+        ).violations,
+      ).toEqual([])
+    }
+  await page.getByRole('link', { name: 'Назад', exact: true }).click()
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Сегодня', exact: true }),
+  ).toBeVisible()
+})

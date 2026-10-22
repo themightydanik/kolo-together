@@ -1,3 +1,4 @@
+import {ActivityBell, ActivityScreen} from './features/activity/screens'
 import { PageHeader, GentleOnboarding } from './components/experience'
 import {
   UsOverview,
@@ -189,6 +190,7 @@ function DemoWorkspace() {
   return (
     <Routes>
       <Route path="/" element={<DemoToday />} />
+      <Route path="/activity" element={<ActivityScreen />} />
       <Route
         path="/tasks"
         element={
@@ -239,6 +241,7 @@ function RealWorkspace() {
       <Route path="/auth/update-password" element={<UpdatePasswordScreen />} />
       <Route element={<ProtectedRoute />}>
         <Route path="/" element={<TodayScreen />} />
+        <Route path="/activity" element={<ActivityScreen />} />
         <Route path="/tasks" element={<TasksScreen />} />
         <Route path="/goals" element={<GoalsScreen />} />
         <Route path="/goals/:goalId" element={<GoalDetailScreen />} />
@@ -337,6 +340,7 @@ function Shell() {
             <span className="font-normal text-muted-foreground">Together</span>
           </NavLink>
           <div className="flex items-center gap-1">
+            <ActivityBell />
             {client && session && <LinkToProfile />}
             <Button
               variant="ghost"
@@ -351,7 +355,7 @@ function Shell() {
         </header>
         <main id="main">
           {location.pathname !== '/' &&
-            !['/tasks', '/goals', '/rewards', '/us'].includes(
+            !['/tasks', '/goals', '/rewards', '/us', '/activity'].includes(
               location.pathname,
             ) &&
             !location.pathname.startsWith('/us/') && (
