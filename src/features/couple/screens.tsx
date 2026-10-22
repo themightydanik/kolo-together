@@ -96,6 +96,7 @@ export function CreateSpaceScreen() {
       queryClient.removeQueries({ queryKey: ['connection-pages'] })
       queryClient.removeQueries({ queryKey: ['activity'] })
       queryClient.removeQueries({ queryKey: ['activity-pages'] })
+      for(const key of ['memory','memories','memory-sources','memory-intent']) queryClient.removeQueries({queryKey:[key]})
       navigate('/us', { replace: true })
     },
   })
@@ -282,6 +283,7 @@ export function AcceptInvitationScreen() {
       queryClient.removeQueries({ queryKey: ['connection-pages'] })
       queryClient.removeQueries({ queryKey: ['activity'] })
       queryClient.removeQueries({ queryKey: ['activity-pages'] })
+      for(const key of ['memory','memories','memory-sources','memory-intent']) queryClient.removeQueries({queryKey:[key]})
       navigate(accept ? '/us' : '/', {
         replace: true,
         state: { invitationDeclined: !accept },
@@ -380,6 +382,7 @@ export function CoupleScreen() {
       queryClient.removeQueries({ queryKey: ['connection-pages'] })
       queryClient.removeQueries({ queryKey: ['activity'] })
       queryClient.removeQueries({ queryKey: ['activity-pages'] })
+      for(const key of ['memory','memories','memory-sources','memory-intent']) queryClient.removeQueries({queryKey:[key]})
     },
   })
   return (

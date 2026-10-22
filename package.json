@@ -19,7 +19,9 @@
     "test:connection-browser": "playwright test",
     "test:connection-accounts": "node scripts/test-connection-accounts.mjs",
     "test:browser": "playwright test",
-    "test:activity-browser": "playwright test --config playwright.activity.config.ts"
+    "test:activity-browser": "playwright test --config playwright.activity.config.ts",
+    "test:memories-storage": "node scripts/test-memories-storage.mjs",
+    "test:memories-browser": "playwright test --config playwright.memories.config.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.2",

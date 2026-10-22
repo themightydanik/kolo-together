@@ -56,6 +56,14 @@ export function BadgeCard({ badge }: { badge: Badge }) {
           </p>
         </>
       )}
+      {open && badge.scope === 'shared' && (
+        <Link
+          className="mt-3 inline-block text-sm text-primary underline"
+          to="/us/history?moments=1"
+        >
+          Зберегти у спогади
+        </Link>
+      )}
       {badge.scope === 'space' && (
         <p className="mt-2 text-xs">
           История пространства, включая прежних участников. Дата не

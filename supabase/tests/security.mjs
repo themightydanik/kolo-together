@@ -4233,3 +4233,122 @@ test('activity review: reproduce legacy Home metadata after close and verify the
  assert.equal((await er(2)).events.length,0)
  assert.equal((await activityRaw(2)).length,0)
 })
+
+// PR11 album: no mock permission checks. Vanilla PG also runs restrictive Storage policies.
+const ma=async(n,action,id=null,expected=0,payload={},request=randomUUID())=>(await asUser(n,'select public.memory_action($1,$2,$3,$4,$5) d',[action,id,expected,payload,request]))[0].d
+const md=async(n,id)=>(await asUser(n,'select public.memory_detail($1) d',[id]))[0].d
+const mf=async(n,cursor=null,category=null,limit=20)=>(await asUser(n,'select public.memory_feed($1,$2,$3) d',[cursor,category,limit]))[0].d
+const mp=async(n,action,id,payload={})=>(await asUser(n,'select public.memory_file($1,$2,$3) d',[action,id,payload]))[0].d
+const memPayload=(extra={})=>({title:'Наше маленьке літо',date:'2026-06-21',story:'Тільки наша історія',category:'joy',photos:[],publish:true,confirmed:true,...extra})
+async function album(){await epair();return (await ma(1,'create')).id}
+async function mockPhoto(n,id){const pid=randomUUID();await mp(n,'reserve',id,{id:pid,mime:'image/jpeg',bytes:3,digest:'a'.repeat(64)});const p=(await pool.query('select * from public.memory_photos where id=$1',[pid])).rows[0];await pool.query('insert into storage.objects(bucket_id,name,metadata) values($1,$2,$3)',['couple-memories',p.path,{size:3,mimetype:'image/jpeg'}]);await mp(n,'commit',pid);return pid}
+test('memories: draft, explicit publication, own-only editing, date/category validation and safe request replay',async()=>{
+ const id=await album();assert.equal((await mf(2)).items.length,0);await assert.rejects(md(2,id),/memory_unavailable/)
+ for(const payload of [memPayload({confirmed:false}),memPayload({title:''}),memPayload({date:'2026-99-99'}),memPayload({story:'x'.repeat(5001)})])await assert.rejects(ma(1,'save',id,1,payload),/memory_invalid/)
+ await assert.rejects(ma(2,'save',id,1,memPayload()),/memory_changed/)
+ const key=randomUUID(),saved=await ma(1,'save',id,1,memPayload(),key);await ma(1,'save',id,1,memPayload(),key)
+ assert.equal(saved.version,2);assert.equal((await md(2,id)).memory.title,'Наше маленьке літо');assert.equal((await mf(2)).items[0].day,'2026-06-21')
+ await ma(1,'save',id,2,memPayload({title:'Відредагована історія'}));await ma(1,'save',id,1,memPayload(),key);assert.equal((await md(1,id)).memory.title,'Відредагована історія')
+ await assert.rejects(ma(1,'save',id,1,memPayload({story:'інше'}),key),/memory_request_conflict/)
+})
+test('memories: two independent notes; withdrawal/delete never destroys or exposes the other personal text',async()=>{
+ const id=await album();await ma(1,'save',id,1,memPayload());await ma(1,'note',id,0,{body:'Мої слова'});await ma(2,'note',id,0,{body:'Особисті слова партнера'})
+ await assert.rejects(ma(1,'note',id,0,{body:'Застаріла версія'}),/memory_changed/)
+ await ma(1,'withdraw',id,2);const b=await md(2,id);assert.equal(b.memory.status,'private_note');assert.equal(b.memory.title,undefined);assert.equal(b.memory.event_date,undefined);assert.equal(b.source,undefined);assert.equal(b.notes.length,1);assert.equal(b.notes[0].body,'Особисті слова партнера')
+ assert.equal((await asUser(1,'select * from public.memory_notes where user_id=$1',[uid(2)])).length,0)
+ await ma(1,'delete',id,3);assert.equal((await md(2,id)).notes[0].body,'Особисті слова партнера');assert.equal((await mf(2)).items[0].title,'Твоя особиста нотатка')
+ await ma(2,'delete_note',id,1);assert.equal((await mf(2)).items.length,0)
+})
+test('memories: removing a note preserves a monotonic version and later editing works without restoring someone else text',async()=>{
+ const id=await album();await ma(1,'save',id,1,memPayload());await ma(2,'note',id,0,{body:'Раз'});await ma(2,'delete_note',id,1)
+ const own=(await md(2,id)).notes.find(n=>n.user_id===uid(2));assert.equal(own.version,2);assert.equal(own.body,'');await ma(2,'note',id,2,{body:'Новий власний текст'});assert.equal((await md(1,id)).notes[0].body,'Новий власний текст')
+})
+test('memories: photo reservation, exactly five published slots, invisible staged changes, cancel and safe replacement',async()=>{
+ const id=await album(),photos=[];for(let i=0;i<5;i++)photos.push(await mockPhoto(1,id))
+ await assert.rejects(mockPhoto(1,id),/memory_photo_limit/)
+ await ma(1,'save',id,1,memPayload({photos}));assert.equal((await md(2,id)).photos.length,5)
+ const replacement=await mockPhoto(1,id);assert.equal((await md(2,id)).photos.length,5);await assert.rejects(mp(2,'read',replacement),/memory_unavailable/)
+ await mp(1,'discard',replacement);assert.equal((await md(2,id)).photos.length,5)
+ const replacement2=await mockPhoto(1,id);await ma(1,'save',id,2,memPayload({photos:[replacement2,...photos.slice(1)]}))
+ await assert.rejects(mp(2,'read',photos[0]),/memory_unavailable/);assert.equal((await md(2,id)).photos[0].id,replacement2)
+ const garbage=await mp(1,'cleanup',null);assert.ok(garbage.some(p=>p.id===photos[0]));await assert.rejects(asUser(1,'select public.memory_prune_photo($1)',[photos[0]]),/permission denied/)
+ await pool.query('select public.memory_prune_photo($1)',[photos[0]]);assert.equal((await pool.query('select count(*)::int n from public.memory_photos where id=$1',[photos[0]])).rows[0].n,1,'cannot drop manifest before physical Storage delete')
+})
+test('memories: forged uploads, unsupported metadata, missing physical object, oversized files and double attachment are rejected',async()=>{
+ const id=await album()
+ for(const values of [{mime:'image/svg+xml',bytes:30},{mime:'image/jpeg',bytes:5242881},{mime:'image/jpeg',bytes:0}])await assert.rejects(mp(1,'reserve',id,{id:randomUUID(),digest:'a'.repeat(64),...values}),/memory_invalid/)
+ const pid=randomUUID();await mp(1,'reserve',id,{id:pid,mime:'image/jpeg',bytes:3,digest:'a'.repeat(64)});await assert.rejects(mp(1,'commit',pid),/memory_invalid/)
+ const real=await mockPhoto(1,id);await assert.rejects(ma(1,'save',id,1,memPayload({photos:[real,real]})),/memory_invalid/)
+ await assert.rejects(ma(2,'save',id,1,memPayload({photos:[real]})),/memory_changed/)
+})
+test('memories: restrictive Storage policy withstands broad permissive rules and blocks raw sign/list/read/write metadata',async()=>{
+ const id=await album(),photo=await mockPhoto(1,id);await ma(1,'save',id,1,memPayload({photos:[photo]}));const row=(await pool.query('select * from public.memory_photos where id=$1',[photo])).rows[0]
+ await pool.query('create policy memory_test_broad on storage.objects for all to authenticated using(true) with check(true)')
+ try{for(const n of [1,2,3]){assert.equal((await asUser(n,'select * from storage.objects where name=$1',[row.path])).length,0);await assert.rejects(asUser(n,"insert into storage.objects(bucket_id,name,metadata) values('couple-memories',$1,'{}')",[randomUUID()]),/row-level security/);assert.equal((await asUser(n,'delete from storage.objects where name=$1 returning id',[row.path])).length,0)}}finally{await pool.query('drop policy memory_test_broad on storage.objects')}
+ assert.ok(await mp(2,'read',photo));await ma(1,'withdraw',id,2);for(const n of [1,2])await assert.rejects(mp(n,'read',photo),/memory_unavailable/)
+})
+test('memories: leave/rejoin/new partner revoke rows, request receipts, cursors, photo IDs and all private note metadata',async()=>{
+ const id=await album(),photo=await mockPhoto(1,id);await ma(1,'save',id,1,memPayload({photos:[photo]}));await ma(2,'note',id,0,{body:'Приватне'});await ma(1,'create',null,1);const cursor=(await mf(1,null,null,1)).next_cursor;assert.ok(cursor)
+ await asUser(2,'select public.leave_couple_space()');for(const n of [1,2]){await assert.rejects(md(n,id),/memory_unavailable/);await assert.rejects(mp(n,'read',photo),/memory_unavailable/);assert.equal((await asUser(n,'select * from public.memory_notes')).length,0)}
+ await resolve(2,await invite(1,2));assert.equal((await mf(1)).items.length,0);await assert.rejects(mf(1,cursor),/memory_cursor_invalid/);await asUser(2,'select public.leave_couple_space()');await resolve(3,await invite(1,3));assert.equal((await mf(3)).items.length,0);await assert.rejects(mp(3,'read',photo),/memory_unavailable/)
+ const cleanup=await mp(1,'cleanup',null);assert.ok(cleanup.some(p=>p.id===photo),'own revoked file can still be scheduled for physical deletion after epoch loss')
+})
+test('memories: source consent, deduplication, deletion, private mood/card rejection and old-composition sources',async()=>{
+ await epair();const g=await readyGoal(),c=await goalChange(1,g,'complete');await goalDecision(2,c)
+ const createKey=randomUUID(),a=await ma(1,'create',null,0,{source_kind:'goal',source_key:g},createKey);await ma(1,'create',null,0,{source_kind:'goal',source_key:g},createKey)
+ await assert.rejects(ma(2,'create',null,0,{source_kind:'goal',source_key:g}),/memory_source_unavailable/)
+ await ma(1,'save',a.id,1,memPayload());const b=await ma(2,'create',null,0,{source_kind:'goal',source_key:g});assert.equal(b.id,a.id);assert.equal((await md(2,a.id)).source.title,'Вместе в Карпаты')
+ await pool.query('delete from public.couple_goals where id=$1',[g]);assert.equal((await md(2,a.id)).source,null);assert.equal((await md(2,a.id)).memory.source_key,undefined);assert.equal((await md(2,a.id)).memory.title,'Наше маленьке літо','own narrative is not an automatic source snapshot')
+ for(const kind of ['mood','card','achievement'])await assert.rejects(ma(1,'create',null,1,{source_kind:kind,source_key:'private'}),/memory_source_unavailable/)
+})
+test('memories: concurrent save CAS, same-key creation, stable keyset, filter-bound cursor and no economic effects',async()=>{
+ await epair();const key=randomUUID(),results=await Promise.all([ma(1,'create',null,0,{},key),ma(1,'create',null,0,{},key)]);assert.equal(results[0].id,results[1].id)
+ const id=results[0].id,race=await Promise.allSettled([ma(1,'save',id,1,memPayload()),ma(1,'save',id,1,memPayload({story:'інший намір'}))]);assert.equal(race.filter(r=>r.status==='fulfilled').length,1)
+ for(let i=1;i<=4;i++){const m=await ma(1,'create',null,i);await ma(1,'save',m.id,1,memPayload({date:'2026-06-21'}))}
+ const page=await mf(2,null,null,2),page2=await mf(2,page.next_cursor,null,2);assert.equal(new Set([...page.items,...page2.items].map(m=>m.id)).size,4)
+ await assert.rejects(mf(1,page.next_cursor),/memory_cursor_invalid/);await assert.rejects(mf(2,page.next_cursor,'date'),/memory_cursor_invalid/)
+ const edited=page2.items[0];await ma(1,'save',edited.id,2,memPayload({date:'1900-01-01'}));const page3=await mf(2,page2.next_cursor,null,2);assert.ok(!page3.items.some(m=>m.id===edited.id),'edited ordering key is excluded until refresh')
+ assert.deepEqual(await progress(1),{xp:0,coins:0});assert.equal((await pool.query('select count(*)::int n from public.reward_ledger')).rows[0].n,0)
+})
+test('memories: COMMIT-time failures roll back memory, note, attachments and request receipt atomically',async()=>{
+ const id=await album(),photo=await mockPhoto(1,id);await ma(1,'save',id,1,memPayload({photos:[photo]}));const replacement=await mockPhoto(1,id),key=randomUUID(),noteKey=randomUUID()
+ await pool.query("create function public.memory_fail_test() returns trigger language plpgsql as $$begin raise exception 'memory_commit_fail';end$$;create constraint trigger memory_test_deferred after insert on public.memory_requests deferrable initially deferred for each row execute function public.memory_fail_test()")
+ try{
+  await assert.rejects(ma(1,'save',id,2,memPayload({story:'не збережено',photos:[replacement]}),key),/memory_commit_fail/)
+  const detail=await md(1,id);assert.equal(detail.memory.story,'Тільки наша історія');assert.equal(detail.photos.find(p=>p.id===photo).position,1);assert.equal(detail.photos.find(p=>p.id===replacement).position,null)
+  await assert.rejects(ma(2,'note',id,0,{body:'не збережена нотатка'},noteKey),/memory_commit_fail/);assert.equal((await md(1,id)).notes.length,0)
+  for(const [n,request] of [[1,key],[2,noteKey]])assert.equal((await asUser(n,'select public.memory_inspect($1) d',[request]))[0].d,null)
+ }finally{await pool.query('drop trigger memory_test_deferred on public.memory_requests;drop function public.memory_fail_test()')}
+})
+test('memories: RLS, closed raw tables, helper grants and fixed search_path',async()=>{
+ await epair();for(const table of ['couple_memories','memory_notes','memory_photos','memory_requests','memory_cursors']){assert.equal((await pool.query('select relrowsecurity from pg_class where oid=$1::regclass',['public.'+table])).rows[0].relrowsecurity,true);for(const op of ['INSERT','UPDATE','DELETE'])assert.equal((await pool.query('select has_table_privilege(\'authenticated\',$1,$2) ok',['public.'+table,op])).rows[0].ok,false)}
+ for(const f of ['memory_epoch(uuid)','memory_visible(uuid)','memory_source(text,text)','memory_lock(uuid)','memory_prune_photo(uuid)','memory_gc_candidates()'])for(const role of ['anon','authenticated'])assert.equal((await pool.query('select has_function_privilege($1,$2,\'execute\') ok',[role,'public.'+f])).rows[0].ok,false)
+ for(const f of ['memory_action(text,uuid,integer,jsonb,uuid)','memory_detail(uuid)','memory_feed(uuid,text,integer)','memory_inspect(uuid)','memory_file(text,uuid,jsonb)','memory_sources()']){assert.equal((await pool.query('select has_function_privilege(\'anon\',$1,\'execute\') ok',['public.'+f])).rows[0].ok,false);assert.equal((await pool.query('select proconfig @> array[\'search_path=""\'] ok from pg_proc where oid=$1::regprocedure',['public.'+f])).rows[0].ok,true)}
+})
+
+test('memories: explicit task, ritual and shared badge sources; personal and previous epoch facts never copied',async()=>{
+ await epair();const t=await jointFact(),i=await instance(t),r=await activeRitual();await ritualRefresh(1);const ri=await ritualInstance(r);await ritualMark(1,ri.id);await ritualMark(2,ri.id)
+ const sources=(await asUser(1,'select public.memory_sources() d'))[0].d.items
+ for(const [kind,key] of [['task',i.id],['ritual',ri.id],['achievement','joint_1']]){
+  assert.ok(sources.some(x=>x.kind===kind&&x.key===key));const expected=(await mf(1)).create_version,m=await ma(1,'create',null,expected,{source_kind:kind,source_key:key});await ma(1,'save',m.id,1,memPayload());assert.ok((await md(2,m.id)).source)
+ }
+ await assert.rejects(ma(1,'create',null,3,{source_kind:'achievement',source_key:'personal_1'}),/memory_source_unavailable/)
+ await asUser(2,'select public.leave_couple_space()');await resolve(2,await invite(1,2))
+ for(const [kind,key] of [['task',i.id],['ritual',ri.id],['achievement','joint_1']])await assert.rejects(ma(1,'create',null,3,{source_kind:kind,source_key:key}),/memory_source_unavailable/)
+})
+test('memories: staging GC skips in-flight attachments, prunes only deleted bytes, and handles Auth cascade orphans',async()=>{
+ const id=await album(),p=await mockPhoto(1,id);await pool.query("update public.memory_photos set created_at=clock_timestamp()-interval '1 hour' where id=$1",[p])
+ const writer=await pool.connect()
+ try{
+  await writer.query('begin');await writer.query("set local role authenticated");await writer.query("select set_config('request.jwt.claim.sub',$1,true)",[uid(1)]);await writer.query("select set_config('request.jwt.claims',$1,true)",[JSON.stringify({sub:uid(1),role:'authenticated'})])
+  await writer.query('select public.memory_action($1,$2,$3,$4,$5)',['save',id,1,memPayload({photos:[p]}),randomUUID()])
+  assert.equal((await pool.query('select public.memory_gc_candidates() d')).rows[0].d.some(x=>x.id===p),false)
+  await writer.query('commit')
+ }catch(e){await writer.query('rollback');throw e}finally{writer.release()}
+ assert.equal((await md(2,id)).photos[0].id,p)
+ const staging=await mockPhoto(1,id);await pool.query("update public.memory_photos set created_at=clock_timestamp()-interval '1 hour' where id=$1",[staging])
+ const candidates=(await pool.query('select public.memory_gc_candidates() d')).rows[0].d;assert.ok(candidates.some(x=>x.id===staging));await assert.rejects(ma(1,'save',id,2,memPayload({photos:[staging]})),/memory_invalid/)
+ const path=(await pool.query('select path from public.memory_photos where id=$1',[p])).rows[0].path
+ await pool.query('delete from auth.users where id=$1',[uid(2)]);assert.equal((await pool.query('select count(*)::int n from public.couple_memories where id=$1',[id])).rows[0].n,0)
+ assert.ok((await pool.query('select public.memory_gc_candidates() d')).rows[0].d.some(x=>x.path===path&&x.id===null))
+})
