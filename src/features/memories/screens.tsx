@@ -41,6 +41,22 @@ import {
 } from './model'
 import { preparePhoto, photoDigest } from './images'
 
+// Only an explicit discard/reload action may abandon a retained mutation intent.
+function forgetMemoryIntent(
+  cache: ReturnType<typeof useQueryClient>,
+  ctx: ReturnType<typeof useMemoryContext>,
+  action: string,
+  id: string,
+) {
+  const key = `kolo:memory:${ctx.session?.user.id}:${ctx.context}:${action}:${id}`
+  cache.removeQueries({ queryKey: ['memory-intent', key], exact: true })
+  try {
+    sessionStorage.removeItem(key)
+  } catch {
+    /* browser storage may be blocked */
+  }
+}
+
 export function MemoryAction({
   action,
   id = null,
@@ -56,7 +72,7 @@ export function MemoryAction({
   payload?: MemoryIntent['payload']
   children: React.ReactNode
   disabled?: boolean
-  onDone?: (id: string) => void
+  onDone?: (id: string, intent: MemoryIntent) => void
 }) {
   const ctx = useMemoryContext(),
     write = useMemoryWrite(),
@@ -101,7 +117,7 @@ export function MemoryAction({
     try {
       const r = await write.mutateAsync(w)
       retain(null)
-      onDone?.(r.id)
+      onDone?.(r.id, w)
     } catch (e) {
       setMessage(memoryError(e))
     }
@@ -118,7 +134,7 @@ export function MemoryAction({
         retain(null)
         await cache.invalidateQueries({ queryKey: ['memory'] })
         await cache.invalidateQueries({ queryKey: ['memories'] })
-        onDone?.(result.id)
+        onDone?.(result.id, intent!)
       } else setMessage('Збереження не знайдено. Можна повторити ті самі дані.')
     } catch (e) {
       setMessage(memoryError(e))
@@ -340,21 +356,18 @@ function LiveMemories() {
             Зараз немає зв’язку. Спогади перевіримо після повернення мережі.
           </p>
         </Card>
-      ) : q.isError || ctx.couple.isError ? (
+      ) : !ctx.session || q.isError || ctx.couple.isError ? (
         <MemoryProblem
           error={q.error}
           retry={() => void cache.resetQueries({ queryKey: ['memories'] })}
         />
-      ) : q.isPending ? (
+      ) : q.isPending && !q.data ? (
         <Card>
           <p role="status">Відкриваємо ваш альбом…</p>
         </Card>
       ) : (
         <>
-          {(!ctx.enabled || (q.isFetching && !q.isFetchingNextPage)) && (
-            <p role="status">Оновлюємо альбом…</p>
-          )}
-          <div hidden={!ctx.enabled || (q.isFetching && !q.isFetchingNextPage)}>
+          <div hidden={!ctx.enabled}>
             {!items.length && (
               <section className="memory-empty">
                 <div className="memory-stamp">
@@ -509,6 +522,7 @@ function LiveDetail() {
     q = useMemoryDetail(memoryId),
     ctx = useMemoryContext(),
     [editing, setEditing] = useState(location.search.includes('edit=1')),
+    [editorRevision, setEditorRevision] = useState(0),
     cache = useQueryClient()
   if (!ctx.online)
     return (
@@ -518,9 +532,16 @@ function LiveDetail() {
         </p>
       </Card>
     )
-  if (q.isError || ctx.couple.isError)
+  if (!ctx.session || q.isError || ctx.couple.isError)
     return <MemoryProblem error={q.error} retry={() => void q.refetch()} />
-  if (q.isPending) return <p role="status">Відкриваємо спогад…</p>
+  if (q.data && q.data.context !== ctx.context)
+    return (
+      <MemoryProblem
+        error={Error('memory_context_changed')}
+        retry={() => void q.refetch()}
+      />
+    )
+  if (q.isPending || !q.data) return <p role="status">Відкриваємо спогад…</p>
   const d = q.data!,
     m = d.memory,
     author = m.author_id === ctx.session?.user.id,
@@ -592,14 +613,12 @@ function LiveDetail() {
           ) : undefined
         }
       />
-      {(!ctx.enabled || q.isFetching) && (
-        <p role="status">Перевіряємо актуальність…</p>
-      )}
-      <div hidden={!ctx.enabled || q.isFetching}>
+      <div hidden={!ctx.enabled}>
         {editing && author && !terminal ? (
           <MemoryEditor
-            key={m.id}
+            key={m.id + ':' + editorRevision}
             detail={d}
+            refresh={() => setEditorRevision((v) => v + 1)}
             close={() => {
               setEditing(false)
               history.replaceState(null, '', '/us/history/' + m.id)
@@ -621,11 +640,7 @@ function LiveDetail() {
                   {d.photos
                     .filter((p) => p.position !== null)
                     .map((p) => (
-                      <MemoryPhotoView
-                        key={p.id}
-                        id={p.id}
-                        generation={m.version ?? 0}
-                      />
+                      <MemoryPhotoView key={p.id} id={p.id} />
                     ))}
                 </div>
                 {m.status === 'draft' && (
@@ -664,14 +679,7 @@ function LiveDetail() {
                   </Card>
                 ))}
               {m.status === 'published' ? (
-                <NoteEditor
-                  key={
-                    'note-' +
-                    (d.notes.find((n) => n.user_id === ctx.session?.user.id)
-                      ?.version ?? 0)
-                  }
-                  detail={d}
-                />
+                <NoteEditor key={'note-' + m.id} detail={d} />
               ) : (
                 d.notes.some(
                   (n) => n.user_id === ctx.session?.user.id && n.body,
@@ -704,9 +712,11 @@ async function cleanup(client: ReturnType<typeof useAuth>['client']) {
 function MemoryEditor({
   detail,
   close,
+  refresh,
 }: {
   detail: MemoryDetail
   close: () => void
+  refresh: () => void
 }) {
   const ctx = useMemoryContext(),
     m = detail.memory,
@@ -721,7 +731,10 @@ function MemoryEditor({
         category: m.category ?? '',
       },
     }),
-    [title, date, story, category] = useWatch({control: form.control, name: ['title', 'date', 'story', 'category']}),
+    [title, date, story, category] = useWatch({
+      control: form.control,
+      name: ['title', 'date', 'story', 'category'],
+    }),
     [photos, setPhotos] = useState<MemoryPhoto[]>(
       detail.photos.filter((p) => p.position !== null),
     ),
@@ -843,6 +856,29 @@ function MemoryEditor({
     !upload
   return (
     <section className="memory-editor">
+      {m.version !== base && (
+        <Card>
+          <p role="status">
+            Спогад змінився в іншому вікні. Твій чернетковий текст і фото
+            збережені тут. Перед новим збереженням переглянь актуальну версію.
+          </p>
+          <ConfirmationDialog
+            locale="uk"
+            title="Оновити збережені дані?"
+            description="Незбережені зміни цієї форми буде замінено актуальною серверною версією. Нові фото залишаться приватними тимчасовими завантаженнями до очищення."
+            trigger={<Button variant="outline">Оновити збережені дані</Button>}
+          >
+            <Button
+              onClick={() => {
+                forgetMemoryIntent(cache, ctx, 'save', m.id)
+                refresh()
+              }}
+            >
+              Відкинути чернетку й оновити
+            </Button>
+          </ConfirmationDialog>
+        </Card>
+      )}
       <p className="memory-draft-label">
         {m.status === 'published'
           ? 'Зміни стануть спільними після збереження.'
@@ -979,8 +1015,11 @@ function MemoryEditor({
   )
 }
 function NoteEditor({ detail }: { detail: MemoryDetail }) {
-  const { session } = useAuth(),
+  const ctx = useMemoryContext(),
+    { session } = ctx,
+    cache = useQueryClient(),
     own = detail.notes.find((n) => n.user_id === session?.user.id),
+    [base, setBase] = useState(own?.version ?? 0),
     form = useForm({
       resolver: zodResolver(memoryNoteSchema),
       mode: 'onChange',
@@ -989,6 +1028,21 @@ function NoteEditor({ detail }: { detail: MemoryDetail }) {
     body = useWatch({ control: form.control, name: 'body' })
   return (
     <div className="memory-note-editor">
+      {(own?.version ?? 0) !== base && (
+        <p role="status">
+          Нотатка змінилася в іншому вікні. Твій текст не замінено.{' '}
+          <Button
+            variant="ghost"
+            onClick={() => {
+              forgetMemoryIntent(cache, ctx, 'note', detail.memory.id)
+              form.reset({ body: own?.body ?? '' })
+              setBase(own?.version ?? 0)
+            }}
+          >
+            Завантажити збережену нотатку
+          </Button>
+        </p>
+      )}
       <label>
         Твоя особиста нотатка
         <textarea {...form.register('body')} rows={3} maxLength={3000} />
@@ -1000,8 +1054,9 @@ function NoteEditor({ detail }: { detail: MemoryDetail }) {
       <MemoryAction
         action="note"
         id={detail.memory.id}
-        expected={own?.version ?? 0}
+        expected={base}
         payload={{ body }}
+        onDone={(_id, intent) => setBase(intent.expected + 1)}
         disabled={!memoryNoteSchema.safeParse({ body }).success}
       >
         Зберегти мою нотатку
@@ -1011,6 +1066,10 @@ function NoteEditor({ detail }: { detail: MemoryDetail }) {
           action="delete_note"
           id={detail.memory.id}
           expected={own.version}
+          onDone={(_id, intent) => {
+            setBase(intent.expected + 1)
+            form.reset({ body: '' })
+          }}
         >
           Видалити мою нотатку
         </MemoryAction>

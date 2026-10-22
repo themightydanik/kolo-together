@@ -25,7 +25,6 @@ export function useMemoryContext() {
       !!auth.session &&
       auth.online &&
       !couple.isPending &&
-      !couple.isFetching &&
       !couple.isError,
   }
 }
@@ -39,7 +38,7 @@ export function useMemoryFeed(category: string | null) {
     staleTime: 0,
     refetchInterval: 15000,
     refetchIntervalInBackground: false,
-    refetchOnWindowFocus: 'always',
+    refetchOnWindowFocus: true,
     maxPages: 5,
     initialPageParam: null as string | null,
     queryFn: async ({ pageParam }) => {
@@ -69,7 +68,7 @@ export function useMemoryDetail(id: string) {
     staleTime: 0,
     refetchInterval: 10000,
     refetchIntervalInBackground: false,
-    refetchOnWindowFocus: 'always',
+    refetchOnWindowFocus: true,
     queryFn: async () => {
       const r = await client!.rpc('memory_detail', { p_id: id })
       if (r.error) throw r.error

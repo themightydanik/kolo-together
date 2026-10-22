@@ -25,6 +25,7 @@ import {
 } from '../features/memories/model'
 const state = vi.hoisted(() => ({
   client: {} as object | null,
+  signedIn: true,
   online: true,
   context: 'epoch',
   rpc: vi.fn(),
@@ -60,7 +61,7 @@ vi.mock('../features/auth/auth-context', () => ({
   useAuth: () => ({
     client: state.client,
     online: state.online,
-    session: { user: { id: 'me' } },
+    session: state.signedIn ? { user: { id: 'me' } } : null,
   }),
 }))
 vi.mock('../features/memories/api', () => ({
@@ -70,7 +71,7 @@ vi.mock('../features/memories/api', () => ({
       : null,
     online: state.online,
     context: state.context,
-    session: { user: { id: 'me' } },
+    session: state.signedIn ? { user: { id: 'me' } } : null,
     enabled: state.online,
     couple: state.couple,
   }),
@@ -83,19 +84,27 @@ vi.mock('../features/memories/api', () => ({
   useMemorySources: () => ({ isPending: false, isError: false, data: [] }),
 }))
 function view(ui: React.ReactNode) {
-  return render(
-    <QueryClientProvider client={new QueryClient()}>
+  const client = new QueryClient()
+  const tree = (child: React.ReactNode) => (
+    <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/us/history/test']}>
         <Routes>
-          <Route path="/us/history/:memoryId" element={ui} />
+          <Route path="/us/history/:memoryId" element={child} />
         </Routes>
       </MemoryRouter>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   )
+  const result = render(tree(ui))
+  return {
+    ...result,
+    rerender: (child: React.ReactNode) => result.rerender(tree(child)),
+  }
 }
+
 beforeEach(() => {
   vi.clearAllMocks()
   state.client = {}
+  state.signedIn = true
   state.online = true
   state.context = 'epoch'
   state.feed.isPending = false
@@ -105,6 +114,8 @@ beforeEach(() => {
   state.detail.isPending = false
   state.detail.isError = false
   state.detail.isFetching = false
+  state.couple.isFetching = false
+  state.couple.isError = false
   state.detail.data = {
     context: 'epoch',
     memory: {
@@ -327,4 +338,168 @@ test('failed photo upload retains exact reservation and Blob for explicit retry 
   expect(uploads).toHaveLength(2)
   expect(uploads[0][1].body.get('id')).toBe(uploads[1][1].body.get('id'))
   expect(state.mutate).not.toHaveBeenCalled()
+})
+
+test('background detail/couple refresh preserves visible editor identity, focus, cursor and every draft field', () => {
+  const r = view(<MemoryDetailScreen />)
+  fireEvent.click(screen.getByRole('button', { name: 'Дії зі спогадом' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Редагувати мій спогад' }))
+  const title = screen.getByRole('textbox', {
+    name: 'Назва',
+  }) as HTMLInputElement
+  fireEvent.change(title, { target: { value: 'Незбережений власний текст' } })
+  fireEvent.change(screen.getByLabelText('Дата моменту'), {
+    target: { value: '2026-07-01' },
+  })
+  fireEvent.change(screen.getByLabelText('Категорія'), {
+    target: { value: 'travel' },
+  })
+  fireEvent.click(
+    screen.getByLabelText(
+      'Підтверджую публікацію мого тексту й цих фото для партнера',
+    ),
+  )
+  title.focus()
+  title.setSelectionRange(3, 7)
+  for (let i = 0; i < 4; i++) {
+    state.detail.isFetching = i % 2 === 0
+    state.couple.isFetching = i % 2 === 0
+    r.rerender(<MemoryDetailScreen />)
+    expect(screen.getByRole('textbox', { name: 'Назва' })).toBe(title)
+    expect(title).toBeVisible()
+    expect(title).toHaveFocus()
+    expect(title.selectionStart).toBe(3)
+    expect(title.selectionEnd).toBe(7)
+    expect(title).toHaveValue('Незбережений власний текст')
+    expect(screen.getByLabelText('Дата моменту')).toHaveValue('2026-07-01')
+    expect(screen.getByLabelText('Категорія')).toHaveValue('travel')
+    expect(
+      screen.getByLabelText(
+        'Підтверджую публікацію мого тексту й цих фото для партнера',
+      ),
+    ).toBeChecked()
+  }
+  state.detail.data = {
+    ...state.detail.data!,
+    memory: { ...state.detail.data!.memory, version: 3, title: 'Інше вікно' },
+  }
+  r.rerender(<MemoryDetailScreen />)
+  expect(title).toBeVisible()
+  expect(title).toHaveValue('Незбережений власний текст')
+  expect(screen.getByText(/Спогад змінився в іншому вікні/)).toBeVisible()
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Оновити збережені дані' }),
+  )
+  expect(title).toHaveValue('Незбережений власний текст')
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Відкинути чернетку й оновити' }),
+  )
+  expect(screen.getByRole('textbox', { name: 'Назва' })).toHaveValue(
+    'Інше вікно',
+  )
+  expect(screen.getByRole('textbox', { name: 'Назва' })).not.toBe(title)
+})
+test('note refresh never remounts or silently rebases the original CAS with an unsaved body', async () => {
+  state.detail.data!.notes = [{ user_id: 'me', body: 'Збережено', version: 2 }]
+  const r = view(<MemoryDetailScreen />),
+    input = screen.getByRole('textbox', { name: 'Твоя особиста нотатка' })
+  fireEvent.change(input, { target: { value: 'Моя локальна чернетка' } })
+  state.detail.isFetching = true
+  r.rerender(<MemoryDetailScreen />)
+  expect(input).toBeVisible()
+  state.detail.isFetching = false
+  state.detail.data = {
+    ...state.detail.data!,
+    notes: [{ user_id: 'me', body: 'Інша вкладка', version: 3 }],
+  }
+  r.rerender(<MemoryDetailScreen />)
+  expect(screen.getByRole('textbox', { name: 'Твоя особиста нотатка' })).toBe(
+    input,
+  )
+  expect(input).toHaveValue('Моя локальна чернетка')
+  fireEvent.click(screen.getByRole('button', { name: 'Зберегти мою нотатку' }))
+  await waitFor(() => expect(state.mutate).toHaveBeenCalled())
+  expect(state.mutate.mock.calls[0][0].expected).toBe(2)
+})
+test('album stays visible while refetching; confirmed epoch/access changes remove private content', () => {
+  state.feed.data.pages[0].items = [
+    {
+      id: 'm',
+      title: 'Видимий спогад',
+      day: '2026-10-01',
+      status: 'published',
+      category: null,
+      cover: null,
+    },
+  ]
+  const r = view(<MemoriesScreen />)
+  const card = screen.getByText('Видимий спогад')
+  state.feed.isFetching = true
+  state.couple.isFetching = true
+  r.rerender(<MemoriesScreen />)
+  expect(card).toBeVisible()
+  r.unmount()
+  const d = view(<MemoryDetailScreen />)
+  expect(screen.getByText('Збережений текст')).toBeVisible()
+  state.context = 'different-epoch'
+  d.rerender(<MemoryDetailScreen />)
+  expect(screen.queryByText('Збережений текст')).toBeNull()
+  expect(screen.getByRole('alert')).toBeVisible()
+})
+
+test('confirmed Auth loss removes private memory and editor instead of retaining stale content', () => {
+  const r = view(<MemoryDetailScreen />)
+  expect(screen.getByText('Збережений текст')).toBeVisible()
+  state.signedIn = false
+  r.rerender(<MemoryDetailScreen />)
+  expect(screen.queryByText('Збережений текст')).toBeNull()
+  expect(screen.getByRole('alert')).toBeVisible()
+})
+
+test('an in-flight staging upload and local fields survive background refetch without a second reservation', async () => {
+  vi.spyOn(photoTools, 'preparePhoto').mockResolvedValue(
+    new Blob(['jpeg'], { type: 'image/jpeg' }),
+  )
+  vi.spyOn(photoTools, 'photoDigest').mockResolvedValue('a'.repeat(64))
+  let finish!: (value: unknown) => void
+  const pending = new Promise((resolve) => {
+    finish = resolve
+  })
+  state.invoke.mockImplementation((_name, options) =>
+    options.body instanceof FormData
+      ? pending
+      : Promise.resolve({ data: new Blob(['fixture']), error: null }),
+  )
+  const r = view(<MemoryDetailScreen />)
+  fireEvent.click(screen.getByRole('button', { name: 'Дії зі спогадом' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Редагувати мій спогад' }))
+  const title = screen.getByRole('textbox', { name: 'Назва' })
+  fireEvent.change(title, { target: { value: 'Текст під час завантаження' } })
+  fireEvent.change(document.querySelector('input[type=file]')!, {
+    target: { files: [new File(['png'], 'photo.png', { type: 'image/png' })] },
+  })
+  const preview = await screen.findByRole('img', {
+    name: 'Попередній перегляд нового фото',
+  })
+  state.detail.isFetching = true
+  state.couple.isFetching = true
+  r.rerender(<MemoryDetailScreen />)
+  expect(preview).toBeVisible()
+  expect(
+    screen.getByRole('img', { name: 'Попередній перегляд нового фото' }),
+  ).toBe(preview)
+  expect(title).toBeVisible()
+  expect(title).toHaveValue('Текст під час завантаження')
+  state.detail.isFetching = false
+  state.couple.isFetching = false
+  r.rerender(<MemoryDetailScreen />)
+  finish({ data: { id: 'photo' }, error: null })
+  await screen.findByRole('button', { name: 'Прибрати фото зі спогаду' })
+  expect(
+    state.rpc.mock.calls.filter((c) => c[1]?.p_action === 'reserve'),
+  ).toHaveLength(1)
+  expect(
+    state.invoke.mock.calls.filter((c) => c[1].body instanceof FormData),
+  ).toHaveLength(1)
+  expect(title).toHaveValue('Текст під час завантаження')
 })

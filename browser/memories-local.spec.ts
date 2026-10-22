@@ -139,12 +139,152 @@ test('real pair album: native file service, two photos, notes, replacement/cance
     await a
       .getByLabel('Підтверджую публікацію мого тексту й цих фото для партнера')
       .check()
+    // Real time (not a fake clock): multiple 10s detail + 15s membership polls.
+    // Sample every animation frame: an attached-but-hidden editor must also fail.
+    await a.getByLabel('Категорія').selectOption('travel')
+    const story = a.getByLabel(/Твоя історія/)
+    await story.focus()
+    const counters = { detail: 0, couple: 0 }
+    a.on('request', (request) => {
+      if (request.url().includes('/rpc/memory_detail')) counters.detail++
+      if (request.url().includes('/rest/v1/couple_members')) counters.couple++
+    })
+    await a.evaluate(() => {
+      const editor = document.querySelector('.memory-editor')!,
+        field = editor.querySelector('textarea') as HTMLTextAreaElement
+      const photos = Array.from(editor.querySelectorAll('img'))
+      const photoSources = photos.map((img) => img.src)
+      const audit = ((window as any).memoryAudit = {
+        editor,
+        field,
+        photos,
+        frames: 0,
+        failures: [] as string[],
+        running: true,
+      })
+      const frame = () => {
+        if (!audit.running) return
+        audit.frames++
+        const fail = (reason: string) => {
+          if (audit.failures.length < 20) audit.failures.push(reason)
+        }
+        if (
+          !editor.isConnected ||
+          document.querySelector('.memory-editor') !== editor
+        )
+          fail('editor remounted')
+        let ancestor: Element | null = field
+        while (ancestor) {
+          const css = getComputedStyle(ancestor)
+          if (
+            css.display === 'none' ||
+            css.visibility === 'hidden' ||
+            css.opacity === '0'
+          )
+            fail('editor hidden')
+          ancestor = ancestor.parentElement
+        }
+        if (!field.getClientRects().length)
+          fail('field has no visible rectangle')
+        if (document.hasFocus() && document.activeElement !== field)
+          fail('focus stolen')
+        for (const [index, img] of photos.entries()) {
+          if (!img.isConnected) fail('photo remounted')
+          if (img.src !== photoSources[index]) fail('photo bytes reloaded')
+        }
+        requestAnimationFrame(frame)
+      }
+      requestAnimationFrame(frame)
+    })
+    let longStory = 'Ми нікуди не поспішали. Тільки вода, небо і ми.'
+    const started = Date.now()
+    for (let i = 0; i < 13; i++) {
+      const suffix = ' Ще одна тиха мить ' + i + '.'
+      await story.press('End')
+      await story.pressSequentially(suffix, { delay: 15 })
+      longStory += suffix
+      const caret = await story.evaluate(
+        (el) => (el as HTMLTextAreaElement).selectionStart,
+      )
+      await a.waitForTimeout(4600)
+      await expect(story).toBeVisible()
+      await expect(story).toBeFocused()
+      await expect(story).toHaveValue(longStory)
+      expect(
+        await story.evaluate(
+          (el) => (el as HTMLTextAreaElement).selectionStart,
+        ),
+      ).toBe(caret)
+      await expect(a.getByLabel('Дата моменту')).toHaveValue('2026-06-21')
+      await expect(a.getByLabel('Категорія')).toHaveValue('travel')
+      await expect(
+        a.getByRole('textbox', { name: 'Назва', exact: true }),
+      ).toHaveValue('Наш день біля води')
+      await expect(
+        a.getByLabel(
+          'Підтверджую публікацію мого тексту й цих фото для партнера',
+        ),
+      ).toBeChecked()
+      if (i === 5) {
+        await b.bringToFront()
+        await b.waitForTimeout(500)
+        await a.bringToFront()
+        await a.evaluate(() => window.dispatchEvent(new Event('focus')))
+        await expect(story).toBeFocused()
+      }
+    }
+    expect(Date.now() - started).toBeGreaterThan(60000)
+    expect(counters.detail).toBeGreaterThanOrEqual(5)
+    expect(counters.couple).toBeGreaterThanOrEqual(3)
+    const audit = await a.evaluate(() => {
+      const audit = (window as any).memoryAudit
+      audit.running = false
+      return { frames: audit.frames, failures: audit.failures }
+    })
+    expect(audit.frames).toBeGreaterThan(300)
+    expect(audit.failures).toEqual([])
+    console.log(
+      info.project.name,
+      'continuous editor',
+      Date.now() - started,
+      'ms;',
+      counters,
+      audit.frames,
+      'visible frames; zero remounts',
+    )
+    await b.evaluate(() => {
+      const root = document.querySelector('.memory-album')!
+      const audit = ((window as any).albumAudit = {
+        failures: [] as string[],
+        running: true,
+        frames: 0,
+      })
+      const frame = () => {
+        if (!audit.running) return
+        audit.frames++
+        if (!root.isConnected || root.querySelector('[hidden]'))
+          audit.failures.push('album hidden or remounted')
+        requestAnimationFrame(frame)
+      }
+      requestAnimationFrame(frame)
+    })
     await a.getByRole('button', { name: 'Зберегти спогад' }).click()
     await expect(a.locator('.memory-gallery img')).toHaveCount(2)
-    await b.goto('http://127.0.0.1:4174/us/history/' + id)
     await expect(
-      b.getByText('Ми нікуди не поспішали. Тільки вода, небо і ми.'),
-    ).toBeVisible()
+      b.getByText('Наш день біля води', { exact: true }),
+    ).toBeVisible({ timeout: 20000 })
+    const albumAudit = await b.evaluate(() => {
+      const audit = (window as any).albumAudit
+      audit.running = false
+      return { frames: audit.frames, failures: audit.failures }
+    })
+    expect(albumAudit.frames).toBeGreaterThan(10)
+    expect(albumAudit.failures).toEqual([])
+    const viewerRoot = await a.locator('.memory-full').elementHandle()
+    const viewerPhotos = await a.locator('.memory-gallery img').elementHandles()
+
+    await b.goto('http://127.0.0.1:4174/us/history/' + id)
+    await expect(b.getByText(longStory, { exact: true })).toBeVisible()
     await expect(b.locator('.memory-gallery img')).toHaveCount(2)
     await expect
       .poll(() =>
@@ -162,10 +302,17 @@ test('real pair album: native file service, two photos, notes, replacement/cance
     await expect(
       b.getByText('Мій улюблений спогад цього літа', { exact: true }).first(),
     ).toBeVisible()
-    await a.reload()
     await expect(
       a.getByText('Мій улюблений спогад цього літа', { exact: true }),
-    ).toBeVisible()
+    ).toBeVisible({ timeout: 20000 })
+    expect(await viewerRoot!.evaluate((node) => node.isConnected)).toBe(true)
+    for (const photo of viewerPhotos)
+      expect(
+        await photo.evaluate(
+          (node) =>
+            node.isConnected && getComputedStyle(node).visibility === 'visible',
+        ),
+      ).toBe(true)
     await a.getByRole('button', { name: 'Дії зі спогадом' }).click()
     await a.getByRole('button', { name: 'Редагувати мій спогад' }).click()
     await a
@@ -175,6 +322,47 @@ test('real pair album: native file service, two photos, notes, replacement/cance
       .getByRole('button', { name: 'Прибрати фото зі спогаду' })
       .first()
       .click()
+    const localTitle = a.getByRole('textbox', { name: 'Назва', exact: true })
+    const originalTitleNode = await localTitle.elementHandle()
+    await b
+      .getByRole('textbox', { name: 'Твоя особиста нотатка' })
+      .fill('Нова нотатка під час редагування')
+    await b.getByRole('button', { name: 'Зберегти мою нотатку' }).click()
+    await a.waitForResponse(
+      (response) =>
+        response.url().includes('/rpc/memory_detail') &&
+        response.status() === 200,
+    )
+    await expect(localTitle).toBeVisible()
+    await expect(localTitle).toHaveValue('Не зберігати цю зміну')
+    expect(
+      await originalTitleNode!.evaluate(
+        (node) => node === document.querySelector('.memory-editor input'),
+      ),
+    ).toBe(true)
+    await expect(a.locator('.memory-editor-photos img')).toHaveCount(1)
+    const concurrent = ok(await clients[0].rpc('memory_detail', { p_id: id }))
+    await act(0, 'save', id, concurrent.memory.version, {
+      title: concurrent.memory.title,
+      date: concurrent.memory.event_date,
+      story: concurrent.memory.story,
+      category: concurrent.memory.category,
+      photos: concurrent.photos
+        .filter((p: any) => p.position !== null)
+        .map((p: any) => p.id),
+      publish: true,
+      confirmed: true,
+    })
+    await expect(a.getByText(/Спогад змінився в іншому вікні/)).toBeVisible({
+      timeout: 20000,
+    })
+    await expect(localTitle).toHaveValue('Не зберігати цю зміну')
+    expect(
+      await originalTitleNode!.evaluate(
+        (node) => node === document.querySelector('.memory-editor input'),
+      ),
+    ).toBe(true)
+
     await a.getByRole('button', { name: 'Скасувати зміни' }).click()
     await expect(
       a.getByRole('heading', { level: 1, name: 'Наш день біля води' }),
@@ -218,7 +406,7 @@ test('real pair album: native file service, two photos, notes, replacement/cance
     await act(0, 'withdraw', id, d.memory.version)
     await b.reload()
     await expect(
-      b.getByText('Мій улюблений спогад цього літа', { exact: true }),
+      b.getByText('Нова нотатка під час редагування', { exact: true }),
     ).toBeVisible()
     await expect(
       b.getByText('Наш день біля води', { exact: true }),
@@ -229,7 +417,7 @@ test('real pair album: native file service, two photos, notes, replacement/cance
       await page.goto('http://127.0.0.1:4174/us/history/' + id)
       await expect(page.getByRole('alert')).toBeVisible()
       await expect(
-        page.getByText('Мій улюблений спогад цього літа', { exact: true }),
+        page.getByText('Нова нотатка під час редагування', { exact: true }),
       ).toHaveCount(0)
     }
   } finally {

@@ -60,3 +60,19 @@ Withdraw фінальний: приховує авторську історію 
 Використовувалися лише нові аккаунти власного disposable local stack `kolo-pr11`; після suite видалені, count Auth users = 0, maintenance batch = 0. Remote SQL, Storage, cloud accounts, production deploy не виконувалися.
 
 Скріншоти містять лише синтетичний canvas landscape, без чужих фото/імен/email: [mobile light](screenshots/pr11/album-chromium-390-light.png), [mobile dark](screenshots/pr11/album-chromium-390-dark.png), [desktop light](screenshots/pr11/album-webkit-1280-light.png), [desktop dark](screenshots/pr11/album-webkit-1280-dark.png). У каталозі `docs/screenshots/pr11` — усі 8 Chromium/WebKit × mobile/desktop × light/dark.
+
+## UX review: непомітне фонове оновлення
+
+Підтверджений ручним тестом дефект PR #11: `hidden` залежав від `memory.isFetching`, а context `enabled` — від `couple.isFetching`. Звичайні успішні 10/15-секундні запити ховали форму й альбом; key нотатки з її server version також міг знищити локальний текст. Це не було відкликанням доступу.
+
+Виправлено: polling і focus revalidation залишаються, але не змінюють видимість, focus, mounted editor або доступність кнопок. Initial loading — тільки без даних. Membership IDs/auth/error/epoch є межею доступу, `isFetching` — лише транспортний стан. Confirmed auth/access error, інший epoch, withdraw/delete прибирають приватний вміст і звільняють Blob URL; звичайний refetch цього не робить. Незмінний photo UUID позначає immutable bytes, тож зміни тексту/нотаток не запускають повторне завантаження фото.
+
+Редактор тримає початковий CAS, RHF defaults, дату, категорію, згоду, локальні фото й upload job протягом усієї сесії редагування. Нову server version показує як конфлікт без автоматичної заміни чернетки. «Оновити збережені дані» потребує підтвердження відкидання локальної форми; лише ця явна дія змінює editor key та завершує старий save intent. Нотатка має стабільний key, окремий початковий CAS і явне завантаження серверного тексту. Успішний save/replay синхронізує note CAS з **первісним intent.expected**, не з потенційно новішим render. Серверні перевірки/CAS/RLS не змінені.
+
+Міграцію `20261025120000_couple_memories.sql` користувач уже застосував: вона незмінна в цьому виправленні. Edge Function також не змінена; тестова SQL інсталяція виконується виключно на новому disposable local Supabase.
+
+Регресії: unit перевіряє DOM identity/видимість/selection/фокус/усі поля під час fetch, note CAS проти іншої вкладки, context fetch проти справжнього auth/epoch error. Реальний Chromium/WebKit сценарій друкує понад 60 секунд зі staged фото й увімкненим polling, контролює кожен animation frame (CSS visibility, незмінний editor node, фото та focus), caret і значення полів, tab/focus return, partner note sync, іншу server version, withdraw/leave. Fake timers або моків Auth/RPC/Storage у цьому сценарії немає.
+
+Результати UX-виправлення: `typecheck` і `lint` без помилок/попереджень; 179 unit/UI (15 файлів), 158 PostgreSQL security/RPC + 6 migration/backfill — PASS. Повний локальний Supabase smoke з власними новими аккаунтами — PASS. Браузерні результати, новий HEAD і build наведені в оновленому PR; віддалені акаунти, SQL і Storage цим виправленням не змінювалися.
+
+Фінальний live browser run: Chromium 66.515 с / 3991 frames, WebKit 66.417 с / 4110 frames; у кожному — 6 detail refetch та 8 membership HTTP запитів, нуль приховувань/remount/focus theft або перезавантажень Blob фото. Додатково перевірені поява нової картки у відкритому альбомі партнера і нотатки через polling **без reload**, збереження локальної форми при іншій server version та справжні withdraw/leave. Обидва сценарії — PASS. Production build — PASS (наявне попередження bundle >500 kB лишається).
