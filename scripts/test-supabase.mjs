@@ -39,6 +39,7 @@ function check(result, label) {
   if (result.error) {
     const error = new Error(label)
     error.code = result.error.code ?? 'sdk_error'
+    error.testOperation = label
     throw error
   }
   return result.data
@@ -1172,13 +1173,14 @@ try {
   if(!(await db.query("select 1 from information_schema.columns where table_schema='public' and table_name='connection_sessions' and column_name='game_catalog_version'")).rowCount){
     await db.query(await readFile('supabase/migrations/20261023120000_product_experience_catalog.sql','utf8'))
   }
+  if(!(await db.query("select to_regclass('public.couple_activity_events') n")).rows[0].n){await db.query(await readFile('supabase/migrations/20261024120000_couple_activity.sql','utf8'))}
   await db.query(
     await readFile('supabase/tests/connection-privileges.sql', 'utf8'),
   )
   await db.query("notify pgrst,'reload schema'")
   for (let attempt = 0; attempt < 100; attempt++) {
-    const ready = await a.rpc('connection_read', { p_view: 'home' })
-    if (!ready.error) break
+    const readiness = await Promise.all([a.rpc('activity_summary'),a.from('couple_activity_events').select('id').limit(1),a.from('connection_moods').select('user_id').limit(1)])
+    if (readiness.every(r=>!r.error)) break
     if (attempt === 99) throw Error('Connection schema cache unavailable')
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
@@ -1257,6 +1259,11 @@ try {
   )
   const ecGameRequest = randomUUID()
   const ecGame = await ecWrite(a, 'start_game', null, 0, {}, ecGameRequest)
+  const activityPage = async(c)=>check(await c.rpc('list_couple_activity',{p_limit:20}), 'Activity read')
+  const inviteEvent=(await activityPage(b)).items.find(e=>e.kind==='connection_invite'&&e.source_id===ecGame.id)
+  assert.ok(inviteEvent)
+  assert.equal(check(await a.from('couple_activity_events').select('*').eq('id',inviteEvent.id),'Other inbox RLS').length,0)
+  assert.ok((await a.rpc('activity_emit',{p_space:ecGame.id,p_actor:signup.user.id,p_recipient:signup.user.id,p_kind:'task_done',p_source:ecGame.id,p_slot:0})).error)
   await ecWrite(b, 'accept', ecGame.id)
   await ecWrite(a, 'draw', ecGame.id, 0)
   assert.equal(
@@ -1283,7 +1290,15 @@ try {
     publish: true,
   })
   assert.equal((await ecRead(b, 'session', ecGame.id)).answers[0].draft, null)
+  assert.equal((await activityPage(b)).items.some(e=>e.kind==='connection_ready'&&e.source_id===ecGame.id),false)
   await ecWrite(b, 'skip', ecGame.id, 0, { slot: '1' })
+  const readyEvent=(await activityPage(b)).items.find(e=>e.kind==='connection_ready'&&e.source_id===ecGame.id);assert.ok(readyEvent)
+  const reactionRequest=randomUUID(),reactionPayload={p_event:readyEvent.id,p_kind:'support',p_expected:null,p_request:reactionRequest}
+  check(await b.rpc('set_activity_reaction',reactionPayload),'Activity reaction');check(await b.rpc('set_activity_reaction',reactionPayload),'Activity replay')
+  assert.equal((await activityPage(a)).items.filter(e=>e.kind==='reaction').length,1)
+  check(await b.rpc('read_couple_activity',{p_id:readyEvent.id}),'Activity receipt')
+  assert.ok((await activityPage(b)).items.find(e=>e.id===readyEvent.id).read_at)
+  console.log('PASS: activity real Auth/JWT/RLS, transactional source, blind answers, reaction/replay, separate receipt and denied helper')
   assert.equal(
     (await ecRead(b, 'session', ecGame.id)).answers.find(
       (x) => x.user_id === signup.user.id,
@@ -1656,7 +1671,7 @@ try {
     'PASS: independent departure removes API visibility, closes tasks and preserves earned progress',
   )
 } catch (error) {
-  console.error(`FAIL: ${step} (${error.code ?? error.name ?? 'error'})`)
+  console.error(`FAIL: ${step} (${error.code ?? error.name ?? 'error'}) ${error.testOperation ?? ''}`)
   if (error.code === 'ERR_ASSERTION')
     console.error(
       error.stack

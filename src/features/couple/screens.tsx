@@ -94,6 +94,8 @@ export function CreateSpaceScreen() {
       queryClient.removeQueries({ queryKey: ['joint-history'] })
       queryClient.removeQueries({ queryKey: ['connection'] })
       queryClient.removeQueries({ queryKey: ['connection-pages'] })
+      queryClient.removeQueries({ queryKey: ['activity'] })
+      queryClient.removeQueries({ queryKey: ['activity-pages'] })
       navigate('/us', { replace: true })
     },
   })
@@ -278,6 +280,8 @@ export function AcceptInvitationScreen() {
       queryClient.removeQueries({ queryKey: ['joint-history'] })
       queryClient.removeQueries({ queryKey: ['connection'] })
       queryClient.removeQueries({ queryKey: ['connection-pages'] })
+      queryClient.removeQueries({ queryKey: ['activity'] })
+      queryClient.removeQueries({ queryKey: ['activity-pages'] })
       navigate(accept ? '/us' : '/', {
         replace: true,
         state: { invitationDeclined: !accept },
@@ -374,6 +378,8 @@ export function CoupleScreen() {
       queryClient.removeQueries({ queryKey: ['joint-history'] })
       queryClient.removeQueries({ queryKey: ['connection'] })
       queryClient.removeQueries({ queryKey: ['connection-pages'] })
+      queryClient.removeQueries({ queryKey: ['activity'] })
+      queryClient.removeQueries({ queryKey: ['activity-pages'] })
     },
   })
   return (

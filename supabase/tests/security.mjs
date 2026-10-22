@@ -4038,3 +4038,198 @@ test('PR9 legacy release: pinned pending invite accepts v1, v1 answers stay tied
  const published=(await pool.query("select content from public.connection_catalog where kind='card' and version=1 order by id")).rows.map(r=>r.content)
  assert.deepEqual(published,originals.toSorted((a,b)=>a.id.localeCompare(b.id)))
 })
+
+// PR10: committed source facts, privacy at read time, no client event fabrication.
+const activity=async(n,cursor=null,limit=20)=>(await asUser(n,'select public.list_couple_activity($1,$2) d',[cursor,limit]))[0].d
+const activitySummary=async(n)=>(await asUser(n,'select public.activity_summary() d'))[0].d
+const activityRead=(n,id=null)=>asUser(n,'select public.read_couple_activity($1) d',[id])
+const activityReact=(n,event,kind,expected=null,key=randomUUID())=>asUser(n,'select public.set_activity_reaction($1,$2,$3,$4)',[event,kind,expected,key])
+const activityRaw=(n)=>asUser(n,'select * from public.couple_activity_events order by created_at desc,id desc')
+const activityFind=async(n,kind)=>(await activity(n)).items.find(i=>i.kind===kind)
+
+test('activity: only successful committed joint facts produce unique per-recipient events; private tasks and moods do not',async()=>{
+ await epair();const personal=await task(1);await complete(1,(await instance(personal)).id)
+ const day=(await er(1)).today;await ec(1,'mood',null,0,moodPayload(day,false))
+ assert.equal((await activity(2)).items.length,0)
+ await assert.rejects(task(1,{title:''}));assert.equal((await activity(2)).items.length,0)
+ const id=await task(1,{kind:'joint'});const invitation=await activityFind(2,'task_consent');assert.equal(invitation.source_id,id)
+ await asUser(2,'select public.respond_task($1,true)',[id]);assert.equal((await activity(2)).items.length,0)
+ const ins=(await instance(id)).id
+ await complete(1,ins);await complete(1,ins)
+ assert.equal((await activity(2)).items.filter(x=>x.kind==='task_partial').length,1)
+ await Promise.all([complete(2,ins),complete(2,ins)])
+ for(const n of [1,2]){assert.equal((await activity(n)).items.filter(x=>x.kind==='task_done').length,1);assert.equal((await activity(n)).items.filter(x=>x.kind==='task_partial').length,0)}
+ assert.equal((await pool.query("select count(*)::int n from public.reward_ledger where instance_id=$1 and kind='together'",[ins])).rows[0].n,1)
+})
+test('activity: concurrent partner marks produce one joint result each and independent read status',async()=>{
+ await epair();const id=await task(1,{kind:'joint'});await asUser(2,'select public.respond_task($1,true)',[id]);const ins=(await instance(id)).id
+ await Promise.all([complete(1,ins),complete(2,ins)])
+ const a=await activityFind(1,'task_done'),b=await activityFind(2,'task_done');assert.notEqual(a.id,b.id)
+ await activityRead(1,a.id);await activityRead(1,a.id)
+ assert.equal((await activitySummary(1)).unread,0);assert.equal((await activitySummary(2)).unread,1)
+ await activityRead(2);assert.equal((await activitySummary(2)).unread,0)
+ await assert.rejects(activityRead(1,b.id),/activity_unavailable/)
+})
+test('activity: goal and ritual consent sources expire on decision; joint completion remains without new economy',async()=>{
+ await epair();const gid=await activeGoal();await addGoalStep(1,gid);const step=(await pool.query('select id from public.goal_steps where goal_id=$1',[gid])).rows[0].id
+ await Promise.all([goalDone(1,step),goalDone(2,step)])
+ const finish=await goalChange(1,gid,'complete');assert.ok(await activityFind(2,'goal_consent'));await goalDecision(2,finish)
+ assert.ok(await activityFind(1,'goal_done'));assert.equal(await activityFind(2,'goal_consent'),undefined)
+ const rid=await ritualCreate(1);assert.ok(await activityFind(2,'ritual_consent'));await ritualDecision(2,await ritualPending(rid));await ritualRefresh(1)
+ const ri=await ritualInstance(rid),before=await progress(1);await ritualMark(1,ri.id);assert.ok(await activityFind(2,'ritual_partial'))
+ await ritualMark(2,ri.id);assert.ok(await activityFind(1,'ritual_done'));assert.equal(await activityFind(2,'ritual_partial'),undefined)
+ assert.deepEqual(await progress(1),before)
+})
+test('activity: game private drafts/submissions create no answer metadata until both publish; close hides direct and RPC events',async()=>{
+ const id=await game();await ec(1,'draw',id,0);const current=await er(1,'session',id)
+ // A fresh draw may be non-intimate by default, both parties may independently answer.
+ await ec(1,'save',id,0,{slot:'1',answers:'Приватний текст'})
+ assert.equal(await activityFind(2,'connection_ready'),undefined)
+ await ec(1,'submit',id,1,{slot:'1',answers:'Приватний текст',publish:true})
+ assert.equal(await activityFind(2,'connection_ready'),undefined)
+ assert.equal((await activityRaw(2)).filter(x=>x.kind==='connection_ready').length,0)
+ await ec(2,'submit',id,0,{slot:'1',answers:'Мій текст',publish:true})
+ const a=await activityFind(1,'connection_ready'),b=await activityFind(2,'connection_ready');assert.ok(a&&b)
+ assert.equal(JSON.stringify(await activity(2)).includes('Приватний текст'),false)
+ await ec(1,'close',id);for(const n of [1,2]){assert.equal((await activityRaw(n)).filter(x=>x.source_id===id).length,0);await assert.rejects(activityRead(n,n===1?a.id:b.id),/activity_unavailable/)}
+ assert.ok(current.card)
+})
+test('activity: original game receipt and inbox receipt agree in both directions without duplicate notifications',async()=>{
+ const id=await game();await ec(1,'draw',id,0);await ec(1,'notify',id,1)
+ const event=await activityFind(2,'connection_notify');assert.ok(event)
+ await ec(1,'notify',id,1);assert.equal((await activity(2)).items.filter(x=>x.kind==='connection_notify').length,1)
+ await ec(2,'ack',id,1);assert.ok((await activity(2)).items.find(x=>x.id===event.id).read_at)
+ // Opposite direction proves inbox read is the existing receipt, not a competing status.
+ await ec(2,'notify',id,1);const reverse=await activityFind(1,'connection_notify');await activityRead(1,reverse.id)
+ assert.equal((await er(1)).events.length,0)
+})
+test('activity: intimate opt-out hides prior ready/invitation metadata and reactions from both readers, no resurrection of old answers',async()=>{
+ const id=await game();await ec(1,'draw',id,0);await sharedReviewCard(id,1)
+ await pool.query("update public.connection_draws set card_id='heat-v2-01' where session_id=$1 and slot=1",[id])
+ await ec(1,'opt',id,0,{enabled:true});await ec(2,'opt',id,0,{enabled:true})
+ // sharedReviewCard creates published answers, but updating their existing rows does not duplicate events.
+ await pool.query('update public.connection_answers set version=version+1 where session_id=$1',[id])
+ await ec(1,'notify',id,1);const e=await activityFind(2,'connection_ready');assert.ok(e);await activityReact(2,e.id,'support')
+ await ec(1,'opt',id,0,{enabled:false})
+ for(const n of [1,2]){assert.equal((await activityRaw(n)).filter(x=>x.source_id===id||x.kind==='reaction').length,0);assert.equal((await activity(n)).items.filter(x=>x.source_id===id||x.kind==='reaction').length,0)}
+ await ec(1,'opt',id,0,{enabled:true});assert.equal(await activityFind(2,'connection_ready'),undefined)
+})
+for(const action of ['unpublish','erase_answers','delete_own_history'])test(`activity: ${action} revokes both accounts, reaction and source UUID metadata immediately`,async()=>{
+ const id=await game();await ec(1,'draw',id,0);await sharedReviewCard(id,1)
+ await pool.query('update public.connection_answers set version=version+1 where session_id=$1',[id])
+ const e=await activityFind(2,'connection_ready');assert.ok(e);await activityReact(2,e.id,'sweet')
+ const own=(await er(1,'session',id)).answers.find(a=>a.user_id===uid(1))
+ await ec(1,action,id,own.version,{slot:'1'})
+ for(const n of [1,2]){const page=await activity(n);assert.equal(page.items.filter(x=>x.source_id===id||x.kind==='reaction').length,0);assert.equal((await activityRaw(n)).length,0)}
+})
+test('activity: completed questionnaire, unpublish and erasure do not leave old report notifications',async()=>{
+ await epair();const catalog='love_languages',q=(await pool.query("select id from public.connection_catalog where kind='questionnaire' order by id limit 1")).rows[0].id
+ const id=(await ec(1,'start_questionnaire',null,0,{catalog:q})).id;assert.ok(await activityFind(2,'connection_invite'));await ec(2,'accept',id)
+ const answers=await quizAnswers(q);await ec(1,'submit',id,0,{slot:'0',answers,publish:true});assert.equal(await activityFind(2,'connection_ready'),undefined)
+ await ec(2,'submit',id,0,{slot:'0',answers,publish:true});assert.ok(await activityFind(2,'connection_ready'))
+ await ec(1,'unpublish',id,1,{slot:'0'});for(const n of [1,2])assert.equal((await activityRaw(n)).length,0)
+ assert.ok(catalog)
+})
+test('activity: reactions support change/remove, same-key replay after change, CAS, preference and no notification chain',async()=>{
+ await epair();const id=await task(1,{kind:'joint'});const e=await activityFind(2,'task_consent'),key=randomUUID()
+ await Promise.all([activityReact(2,e.id,'support',null,key),activityReact(2,e.id,'support',null,key)])
+ assert.equal((await activity(1)).items.filter(x=>x.kind==='reaction').length,1)
+ const re=await activityFind(1,'reaction');assert.equal((await activityRead(1,re.id))[0].d.path,'/tasks');assert.equal((await activity(2)).items.find(x=>x.id===e.id).read_at,null,'opening support must not mark the partner inbox');await assert.rejects(activityReact(1,re.id,'sweet'),/activity_unavailable/)
+ await activityRead(1,re.id);await activityReact(2,e.id,'proud','support')
+ await activityReact(2,e.id,'support',null,key);assert.equal((await activity(2)).items.find(x=>x.id===e.id).own_reaction,'proud')
+ await assert.rejects(activityReact(2,e.id,'thanks',null),/activity_changed/)
+ await assert.rejects(activityReact(2,e.id,'sweet',null,key),/activity_request_conflict/)
+ assert.equal((await activitySummary(1)).unread,0)
+ await asUser(1,'select public.set_activity_preferences(false)');assert.equal((await activity(1)).items.length,0)
+ await activityReact(2,e.id,null,'proud');assert.equal((await activityRaw(1)).length,0)
+ await activityReact(2,e.id,'thanks');assert.equal((await activity(1)).items.length,0)
+ await asUser(1,'select public.set_activity_preferences(true)');assert.equal((await activity(1)).items[0].id,re.id);assert.equal((await activitySummary(1)).unread,0)
+ // accepting the source revokes the supporting reaction metadata as well.
+ await asUser(2,'select public.respond_task($1,true)',[id]);assert.equal((await activity(1)).items.length,0)
+})
+test('activity: leave, same-user rejoin, different partner/new pair and old cursors never transfer history',async()=>{
+ await epair();for(let i=0;i<3;i++)await task(1,{kind:'joint'})
+ const page=await activity(2,null,1),id=page.items[0].id;assert.ok(page.next_cursor)
+ await asUser(2,'select public.leave_couple_space()')
+ for(const n of [1,2]){assert.equal((await activity(n)).items.length,0);assert.equal((await activityRaw(n)).length,0)}
+ await assert.rejects(activity(2,page.next_cursor,1),/activity_cursor_invalid/)
+ await resolve(2,await invite(1,2));assert.equal((await activity(2)).items.length,0);await assert.rejects(activityRead(2,id),/activity_unavailable/)
+ await asUser(2,'select public.leave_couple_space()');await resolve(3,await invite(1,3));assert.equal((await activityRaw(3)).length,0)
+ await create(2);await resolve(4,await invite(2,4));assert.equal((await activity(2)).items.length,0);await assert.rejects(activity(3,page.next_cursor,1),/activity_cursor_invalid/)
+})
+test('activity: bounded deterministic keyset cursor is actor/epoch/expiry-bound, direct access isolated, mark-all skips hidden rows',async()=>{
+ await epair();for(let i=0;i<5;i++)await task(1,{kind:'joint'});await create(3);await resolve(4,await invite(3,4));await task(3,{kind:'joint'})
+ await pool.query("update public.couple_activity_events set created_at='2026-10-01T10:00:00Z' where recipient_id=$1",[uid(2)])
+ const first=await activity(2,null,2),second=await activity(2,first.next_cursor,2),third=await activity(2,second.next_cursor,2)
+ const all=[...first.items,...second.items,...third.items];assert.equal(all.length,5);assert.equal(new Set(all.map(x=>x.id)).size,5);assert.ok(first.items[0].id>first.items[1].id);assert.equal(third.next_cursor,null)
+ await assert.rejects(activity(4,first.next_cursor),/activity_cursor_invalid/);await assert.rejects(activityRead(4,first.items[0].id),/activity_unavailable/)
+ assert.equal((await asUser(4,'select * from public.couple_activity_events where id=$1',[first.items[0].id])).length,0)
+ await pool.query("update public.couple_activity_cursors set expires_at=clock_timestamp()-interval '1 second'");await assert.rejects(activity(2,first.next_cursor),/activity_cursor_invalid/)
+ await assert.rejects(activity(2,null,51),/activity_invalid/)
+ const hidden=first.items[0];await pool.query("update public.tasks set status='cancelled' where id=$1",[hidden.source_id]);await activityRead(2)
+ assert.equal((await pool.query('select read_at from public.couple_activity_events where id=$1',[hidden.id])).rows[0].read_at,null)
+ assert.equal((await activitySummary(2)).unread,0)
+})
+test('activity: triggers and source side effects roll back atomically including deferred COMMIT failure',async()=>{
+ await epair();const id=await task(1,{kind:'joint'});await asUser(2,'select public.respond_task($1,true)',[id]);const ins=(await instance(id)).id;await complete(1,ins)
+ const before=await activity(1),balance=await progress(2)
+ await pool.query("create function public.activity_test_fail() returns trigger language plpgsql as $$begin raise exception 'forced_activity_commit'; end$$; create constraint trigger activity_test_deferred after insert on public.couple_activity_events deferrable initially deferred for each row execute function public.activity_test_fail()")
+ try{await assert.rejects(complete(2,ins),/forced_activity_commit/);assert.deepEqual(await progress(2),balance);assert.deepEqual((await activity(1)).items,before.items);assert.equal((await instance(id)).status,'active')}finally{await pool.query('drop trigger activity_test_deferred on public.couple_activity_events;drop function public.activity_test_fail()')}
+ await complete(2,ins);assert.ok(await activityFind(1,'task_done'))
+})
+test('activity: all new tables have RLS, least grants, fixed search_path and no client event/read/reaction fabrication',async()=>{
+ await epair();const id=await task(1,{kind:'joint'});const e=await activityFind(2,'task_consent')
+ for(const table of ['couple_activity_events','couple_activity_reactions','couple_activity_preferences','couple_activity_requests','couple_activity_cursors']){
+  assert.equal((await pool.query('select relrowsecurity from pg_class where oid=$1::regclass',['public.'+table])).rows[0].relrowsecurity,true)
+  await assert.rejects(asUser(null,'select * from public.'+table),/permission denied/)
+  for(const privilege of ['INSERT','UPDATE','DELETE'])assert.equal((await pool.query('select has_table_privilege($1,$2,$3) yes',['authenticated','public.'+table,privilege])).rows[0].yes,false)
+ }
+ for(const f of ['activity_subject(public.couple_activity_events)','activity_source_visible(public.couple_activity_events)','activity_emit(uuid,uuid,uuid,text,uuid,integer)','activity_from_source()','activity_sync_read()'])for(const role of ['anon','authenticated'])assert.equal((await pool.query('select has_function_privilege($1,$2,\'execute\') yes',[role,'public.'+f])).rows[0].yes,false)
+ for(const f of ['activity_summary()','list_couple_activity(uuid,integer)','read_couple_activity(uuid)','set_activity_reaction(uuid,text,text,uuid)','set_activity_preferences(boolean)','activity_event_visible(uuid)']){
+  assert.equal((await pool.query('select has_function_privilege(\'anon\',$1,\'execute\') yes',['public.'+f])).rows[0].yes,false)
+  assert.equal((await pool.query('select proconfig @> array[\'search_path=""\'] yes from pg_proc where oid=$1::regprocedure',['public.'+f])).rows[0].yes,true)
+ }
+ await assert.rejects(asUser(2,'update public.couple_activity_events set read_at=clock_timestamp() where id=$1',[e.id]),/permission denied/)
+ await assert.rejects(asUser(8,'select public.activity_summary()'),/email_not_confirmed|verified/)
+ assert.equal((await asUser(3,'select public.activity_event_visible($1) yes',[e.id]))[0].yes,false)
+ assert.ok(id)
+})
+test('activity: competing reaction intentions use CAS, rollback never emits a support receipt, and leaving serializes with read/react',async()=>{
+ await epair();const id=await task(1,{kind:'joint'}),e=await activityFind(2,'task_consent')
+ const race=await Promise.allSettled([activityReact(2,e.id,'support'),activityReact(2,e.id,'proud')]);assert.equal(race.filter(x=>x.status==='fulfilled').length,1)
+ assert.equal((await activity(1)).items.filter(x=>x.kind==='reaction').length,1)
+ const before=(await activity(2)).items[0].own_reaction
+ await pool.query("create function public.activity_reaction_fail() returns trigger language plpgsql as $$begin raise exception 'reaction_commit_failed';end$$;create constraint trigger activity_reaction_failure after insert on public.couple_activity_requests deferrable initially deferred for each row execute function public.activity_reaction_fail()")
+ try{await assert.rejects(activityReact(2,e.id,'thanks',before),/reaction_commit_failed/);assert.equal((await activity(2)).items[0].own_reaction,before)}finally{await pool.query('drop trigger activity_reaction_failure on public.couple_activity_requests;drop function public.activity_reaction_fail()')}
+ await Promise.allSettled([activityReact(2,e.id,'thanks',before),asUser(1,'select public.leave_couple_space()'),activityRead(2,e.id)])
+ for(const n of [1,2]){assert.equal((await activityRaw(n)).length,0);assert.equal((await activity(n)).items.length,0)}
+ assert.ok(id)
+})
+test('activity: source deletion and session metadata withdrawal hide old events, reactions and existing Home projections',async()=>{
+ const id=await game();await ec(1,'draw',id,0);await ec(1,'notify',id,1);assert.equal((await er(2)).events.length,1)
+ await ec(1,'close',id);assert.equal((await er(2)).events.length,0)
+ assert.equal((await activityRaw(2)).length,0)
+ const gid=await goal(1);const e=await activityFind(2,'goal_consent');await activityReact(2,e.id,'support')
+ await pool.query('delete from public.couple_goals where id=$1',[gid]);assert.equal((await activityRaw(1)).length,0);assert.equal((await activityRaw(2)).length,0)
+})
+test('activity: stale lazy instances do not advertise an actionable partial after the server UTC period changes',async()=>{
+ await epair();const t=await task(1,{kind:'joint',recurrence:'daily'});await asUser(2,'select public.respond_task($1,true)',[t]);const ins=(await instance(t)).id;await complete(1,ins)
+ const r=await activeRitual();await ritualRefresh(1);const ri=await ritualInstance(r);await ritualMark(1,ri.id)
+ assert.ok(await activityFind(2,'task_partial'));assert.ok(await activityFind(2,'ritual_partial'))
+ const future=(await pool.query("select (clock_timestamp()+interval '1 day')::text as at")).rows[0].at
+ try{
+  await pool.query(`create or replace function public.task_clock() returns timestamptz language sql volatile set search_path='' as $$select '${future}'::timestamptz$$;create or replace function public.ritual_clock() returns timestamptz language sql volatile set search_path='' as $$select '${future}'::timestamptz$$`)
+  assert.equal((await activityRaw(2)).filter(e=>['task_partial','ritual_partial'].includes(e.kind)).length,0)
+  assert.equal((await activitySummary(2)).spotlight,null)
+  assert.equal((await instance(t)).status,'active');assert.equal((await ritualInstance(r)).status,'partial','no business write on activity reads')
+ }finally{await pool.query("create or replace function public.task_clock() returns timestamptz language sql volatile set search_path='' as $$select clock_timestamp()$$;create or replace function public.ritual_clock() returns timestamptz language sql volatile set search_path='' as $$select clock_timestamp()$$")}
+})
+test('activity review: reproduce legacy Home metadata after close and verify the new projection blocks it',async()=>{
+ const id=await game();await ec(1,'draw',id,0);await ec(1,'notify',id,1);await ec(1,'close',id)
+ const definition=(sql)=>{const a=sql.indexOf('function public.connection_read('),b=sql.indexOf('end $$;',a)+7;return 'create or replace '+sql.slice(a,b)}
+ const legacy=definition(await readFile('supabase/migrations/20261022120000_emotional_connection.sql','utf8')),current=definition(await readFile('supabase/migrations/20261024120000_couple_activity.sql','utf8'))
+ try{await pool.query(legacy);assert.equal((await er(2)).events.some(e=>e.session_id===id),true,'confirmed pre-PR10 projection exposes closed-session invitation metadata')}
+ finally{await pool.query(current)}
+ assert.equal((await er(2)).events.length,0)
+ assert.equal((await activityRaw(2)).length,0)
+})

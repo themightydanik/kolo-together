@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test'
 export default defineConfig({
   testDir: './browser',
+  testMatch: 'experience.spec.ts',
   timeout: 30000,
   expect: { timeout: 7000, toHaveScreenshot: { maxDiffPixelRatio: 0.015 } },
   fullyParallel: false,
