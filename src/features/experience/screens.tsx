@@ -1,3 +1,4 @@
+import { MemoriesScreen } from '../memories/screens'
 import { Link } from 'react-router'
 import { Coffee, Settings, Mountain, ArrowUpRight } from 'lucide-react'
 import {
@@ -157,8 +158,8 @@ export function UsOverview() {
       <FeatureEntry
         to="/us/history"
         icon={<Mountain />}
-        title="Наша история"
-        description="Совместный путь, тёплые моменты и достижения"
+        title="Наша історія"
+        description="Ваші спогади, маленькі радощі та особливі дні"
         accent="peach"
       />
       <section>
@@ -198,13 +199,16 @@ function PairWelcome() {
   )
 }
 export function UsHistory() {
+  return <MemoriesScreen />
+}
+export function UsProgress() {
   const { client } = useAuth()
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Наша история"
+        title="Наш шлях"
         description="Маленькие моменты, из которых складывается общее."
-        back="/us"
+        back="/us/history"
       />
       {client ? <RealHistory /> : <DemoStatistics />}
     </div>

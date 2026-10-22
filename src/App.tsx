@@ -1,8 +1,10 @@
-import {ActivityBell, ActivityScreen} from './features/activity/screens'
+import { MemoryDetailScreen } from './features/memories/screens'
+import { ActivityBell, ActivityScreen } from './features/activity/screens'
 import { PageHeader, GentleOnboarding } from './components/experience'
 import {
   UsOverview,
   UsHistory,
+  UsProgress,
   UsTraditions,
   UsSettings,
   DemoToday,
@@ -216,6 +218,8 @@ function DemoWorkspace() {
       <Route path="/rewards" element={<DemoRewardsExperience />} />
       <Route path="/us" element={<UsOverview />} />
       <Route path="/us/history" element={<UsHistory />} />
+      <Route path="/us/history/:memoryId" element={<MemoryDetailScreen />} />
+      <Route path="/us/progress" element={<UsProgress />} />
       <Route path="/us/traditions" element={<UsTraditions />} />
       <Route path="/us/settings" element={<UsSettings />} />
       <Route path="/us/connection/game" element={<DemoConnection />} />
@@ -248,6 +252,8 @@ function RealWorkspace() {
         <Route path="/rewards" element={<RewardsScreen />} />
         <Route path="/us" element={<UsOverview />} />
         <Route path="/us/history" element={<UsHistory />} />
+        <Route path="/us/history/:memoryId" element={<MemoryDetailScreen />} />
+        <Route path="/us/progress" element={<UsProgress />} />
         <Route path="/us/traditions" element={<UsTraditions />} />
         <Route path="/us/settings" element={<UsSettings />} />
         <Route

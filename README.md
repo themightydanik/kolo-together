@@ -75,3 +75,9 @@ SDK намеренно не установлены. После выбора iOS/
 [Архитектура событий, приватность, сценарии и ручная проверка](docs/couple-activity-design.md). Колокольчик открывает центр событий; прочтение и четыре добровольные реакции согласованы сервером. Пять вкладок, согласия и экономика сохранены; push и paywall не добавлены.
 
 Pending SQL: `20261024120000_couple_activity.sql` (только отдельное ручное применение после review). Новых env нет. `npm run test:browser` проверяет демо в Chromium/WebKit. `KOLO_ACTIVITY_STATUS_FILE=/tmp/OWN-status.json npm run test:activity-browser` — реальные изолированные локальные Auth-аккаунты и configured preview на 4174; не используйте cloud status/production. Инструкции и снимки — в документе выше.
+
+## Наша історія (PR #11)
+
+`/us/history` — український спільний альбом з фото, власними нотатками та явною публікацією. Статистика/досягнення залишилися незалежними на `/us/progress`; основних вкладок п'ять. Приватні фото через JWT-перевірену Edge Function, не публічні URL. Без Supabase альбом read-only. [Архітектура, ручна перевірка двома аккаунтами, SQL/Storage/Edge deployment та cleanup](docs/couple-memories-design.md).
+
+Додатково на власному disposable local Supabase: `npm run test:memories-storage -- /tmp/own-status.json`; `KOLO_MEMORY_STATUS_FILE=/tmp/own-status.json npm run test:memories-browser` (configured preview :4174). Для native Deno file service: `node scripts/serve-local-memory-files.mjs /tmp/own-status.json`, потім `KOLO_MEMORY_FILES_URL=http://127.0.0.1:4185` у browser suite. Не використовуйте статус чи аккаунти чужої/віддаленої бази. Стандартні typecheck/lint/test/build залишилися.

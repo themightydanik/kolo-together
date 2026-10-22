@@ -23,7 +23,7 @@ import type {
   HistoryPage,
   HistoryCursor,
 } from '../features/statistics/model'
-/** Schema snapshot through 20261024120000_couple_activity.sql.
+/** Schema snapshot through 20261025120000_couple_memories.sql.
  * Refresh with Supabase CLI (see docs/supabase.md) and review the diff. */
 export type Profile = {
   id: string
@@ -276,6 +276,74 @@ type Table<Row, Insert, Update> = {
 export type Database = {
   public: {
     Tables: {
+      couple_memories: Table<
+        {
+          id: string
+          space_id: string
+          author_id: string
+          am: string
+          bm: string
+          title: string
+          event_date: string
+          story: string
+          category: string | null
+          status: 'draft' | 'published' | 'withdrawn' | 'deleted'
+          version: number
+          source_kind: string | null
+          source_key: string | null
+          created_at: string
+          updated_at: string
+        },
+        never,
+        never
+      >
+      memory_notes: Table<
+        {
+          memory_id: string
+          user_id: string
+          body: string
+          version: number
+          created_at: string
+          updated_at: string
+        },
+        never,
+        never
+      >
+      memory_photos: Table<
+        {
+          id: string
+          memory_id: string
+          author_id: string
+          path: string
+          mime: string
+          bytes: number
+          digest: string
+          state: 'reserved' | 'ready' | 'deleting'
+          position: number | null
+          created_at: string
+        },
+        never,
+        never
+      >
+      memory_requests: Table<
+        { user_id: string; request_id: string; intent: string; result: Json },
+        never,
+        never
+      >
+      memory_cursors: Table<
+        {
+          id: string
+          user_id: string
+          context: string
+          category: string | null
+          ceiling: string
+          last_day: string
+          last_id: string
+          expires_at: string
+        },
+        never,
+        never
+      >
       couple_activity_events: Table<
         {
           id: string
@@ -490,6 +558,36 @@ export type Database = {
     }
     Views: { goal_progress: { Row: GoalProgress; Relationships: [] } }
     Functions: {
+      memory_action: {
+        Args: {
+          p_action: string
+          p_id: string | null
+          p_expected: number
+          p_payload: Json
+          p_request: string
+        }
+        Returns: Json
+      }
+      memory_detail: { Args: { p_id: string }; Returns: Json }
+      memory_feed: {
+        Args: {
+          p_cursor?: string | null
+          p_category?: string | null
+          p_limit?: number
+        }
+        Returns: Json
+      }
+      memory_inspect: { Args: { p_request: string }; Returns: Json }
+      memory_file: {
+        Args: { p_action: string; p_id: string | null; p_payload?: Json }
+        Returns: Json
+      }
+      memory_sources: { Args: Record<string, never>; Returns: Json }
+      memory_note_visible: {
+        Args: { p_id: string; p_user: string }
+        Returns: boolean
+      }
+
       activity_summary: { Args: Record<string, never>; Returns: Json }
       list_couple_activity: {
         Args: { p_cursor?: string | null; p_limit?: number }
@@ -537,7 +635,10 @@ export type Database = {
       }
 
       can_read_ritual: { Args: { p_ritual_id: string }; Returns: boolean }
-      refresh_ritual_instances: { Args: Record<string, never>; Returns: string }
+      refresh_ritual_instances: {
+        Args: Record<string, never>
+        Returns: string
+      }
       create_couple_ritual: {
         Args: {
           p_request_id: string

@@ -1405,6 +1405,10 @@ try {
     'Accept task before departure',
   )
   const pendingInstance = await taskInstance(pendingJoint)
+  step = 'memory schema compatibility with real Supabase Auth and Storage'
+  if(!(await db.query("select to_regclass('public.couple_memories') n")).rows[0].n)await db.query(await readFile('supabase/migrations/20261025120000_couple_memories.sql','utf8'))
+  await db.query("notify pgrst,'reload schema'")
+  console.log('PASS: memory schema and restrictive Storage policy install on real Supabase')
   step = 'equal partner exit through REST'
   check(await b.rpc('leave_couple_space'), 'Partner may leave independently')
   assert.equal(
