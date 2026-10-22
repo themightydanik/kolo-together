@@ -1169,6 +1169,9 @@ try {
       ),
     )
   }
+  if(!(await db.query("select 1 from information_schema.columns where table_schema='public' and table_name='connection_sessions' and column_name='game_catalog_version'")).rowCount){
+    await db.query(await readFile('supabase/migrations/20261023120000_product_experience_catalog.sql','utf8'))
+  }
   await db.query(
     await readFile('supabase/tests/connection-privileges.sql', 'utf8'),
   )
@@ -1305,6 +1308,7 @@ try {
   ])
   assert.equal(ecRace.filter((r) => !r.error).length, 1)
   assert.equal((await ecRead(a, 'session', ecGame.id)).session.position, 2)
+  assert.equal((await ecRead(a, 'session', ecGame.id)).session.game_catalog_version,2)
   assert.ok(
     (await a.from('connection_sessions').delete().eq('id', ecGame.id)).error,
   )

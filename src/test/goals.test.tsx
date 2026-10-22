@@ -162,12 +162,12 @@ afterEach(() => {
 })
 test('goal list uses server progress including empty 0% and links to detail', async () => {
   wrapper(<GoalsScreen />)
-  expect(await screen.findByText('0%')).toBeInTheDocument()
+  expect(await screen.findByText('0 / 0')).toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'Открыть цель' })).toHaveAttribute(
     'href',
     '/goals/goal',
   )
-  expect(screen.getByRole('progressbar')).toHaveAttribute('value', '0')
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0')
 })
 test('filters show waiting, paused and completed goals without losing active data', async () => {
   const d = data()

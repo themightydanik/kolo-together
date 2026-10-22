@@ -1,5 +1,3 @@
-import { ConnectionLinks } from '../connection/screens'
-import { RitualsSection } from '../rituals/screens'
 import { useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -10,7 +8,7 @@ import { Heart, Users } from 'lucide-react'
 import { useAuth } from '../auth/auth-context'
 import { clearInvitationToken, invitationToken } from '../auth/invitation-token'
 import { useCouple } from './api'
-import { StatisticsSection } from '../statistics/screens'
+
 import { Card } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { EmptyState, LoadingState } from '../../components/states'
@@ -94,6 +92,8 @@ export function CreateSpaceScreen() {
       queryClient.removeQueries({ queryKey: ['ritual-summary'] })
       queryClient.removeQueries({ queryKey: ['statistics'] })
       queryClient.removeQueries({ queryKey: ['joint-history'] })
+      queryClient.removeQueries({ queryKey: ['connection'] })
+      queryClient.removeQueries({ queryKey: ['connection-pages'] })
       navigate('/us', { replace: true })
     },
   })
@@ -276,6 +276,8 @@ export function AcceptInvitationScreen() {
       queryClient.removeQueries({ queryKey: ['ritual-summary'] })
       queryClient.removeQueries({ queryKey: ['statistics'] })
       queryClient.removeQueries({ queryKey: ['joint-history'] })
+      queryClient.removeQueries({ queryKey: ['connection'] })
+      queryClient.removeQueries({ queryKey: ['connection-pages'] })
       navigate(accept ? '/us' : '/', {
         replace: true,
         state: { invitationDeclined: !accept },
@@ -370,22 +372,13 @@ export function CoupleScreen() {
       queryClient.removeQueries({ queryKey: ['ritual-summary'] })
       queryClient.removeQueries({ queryKey: ['statistics'] })
       queryClient.removeQueries({ queryKey: ['joint-history'] })
+      queryClient.removeQueries({ queryKey: ['connection'] })
+      queryClient.removeQueries({ queryKey: ['connection-pages'] })
     },
   })
   return (
     <div className="space-y-5">
       <CoupleStatus />
-      <RitualsSection /><ConnectionLinks />
-      {!query.isPending && !query.isError && (
-        <StatisticsSection
-          context={
-            query.data?.members
-              .map((m) => m.id)
-              .sort()
-              .join(':') ?? 'solo'
-          }
-        />
-      )}
       <Card>
         <h2 className="font-semibold">Два человека. Одна команда.</h2>
         <p className="my-3 text-sm text-muted-foreground">

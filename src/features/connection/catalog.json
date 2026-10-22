@@ -33,904 +33,1054 @@
   ],
   "cards": [
     {
-      "id": "us-01",
+      "id": "us-v2-01",
       "category": "us",
-      "text": "Яку нашу випадкову зустріч ти пам’ятаєш найвиразніше?",
-      "version": 1
+      "text": "Коли ти вперше подумав(-ла), що з нами може вийти щось особливе?",
+      "version": 2,
+      "previous_id": "us-01"
     },
     {
-      "id": "us-02",
+      "id": "us-v2-02",
       "category": "us",
       "text": "Яка дрібниця вдома нагадує тобі про нас?",
-      "version": 1
+      "version": 2,
+      "previous_id": "us-02"
     },
     {
-      "id": "us-03",
+      "id": "us-v2-03",
       "category": "us",
-      "text": "Коли поруч зі мною ти відчуваєш затишок?",
-      "version": 1
+      "text": "Згадай наш день, коли нічого особливого не сталося, але було дуже добре. Що в ньому було?",
+      "version": 2,
+      "previous_id": "us-03"
     },
     {
-      "id": "us-04",
+      "id": "us-v2-04",
       "category": "us",
-      "text": "Яку нашу прогулянку ти зберіг(-ла) б у маленькій пляшечці спогадів?",
-      "version": 1
+      "text": "Куди з наших спільних прогулянок тобі хочеться повернутися?",
+      "version": 2,
+      "previous_id": "us-04"
     },
     {
-      "id": "us-05",
+      "id": "us-v2-05",
       "category": "us",
-      "text": "Яка моя звичка непомітно стала для тебе рідною?",
-      "version": 1
+      "text": "Яка моя звичка спершу дивувала, а тепер здається рідною?",
+      "version": 2,
+      "previous_id": "us-05"
     },
     {
-      "id": "us-06",
+      "id": "us-v2-06",
       "category": "us",
-      "text": "Який звук міг би бути саундтреком нашого знайомства?",
-      "version": 1
+      "text": "Почувши яку пісню, ти одразу згадуєш нас?",
+      "version": 2,
+      "previous_id": "us-06"
     },
     {
-      "id": "us-07",
+      "id": "us-v2-07",
       "category": "us",
       "text": "Що ми навчилися робити разом краще, ніж окремо?",
-      "version": 1
+      "version": 2,
+      "previous_id": "us-07"
     },
     {
-      "id": "us-08",
+      "id": "us-v2-08",
       "category": "us",
-      "text": "Яку звичайну неділю з нами ти вважаєш особливою?",
-      "version": 1
+      "text": "Над яким нашим невдалим планом ти досі смієшся?",
+      "version": 2,
+      "previous_id": "us-08"
     },
     {
-      "id": "us-09",
+      "id": "us-v2-09",
       "category": "us",
-      "text": "Яка спільна фотографія розповідає більше, ніж видно на ній?",
-      "version": 1
+      "text": "Яку спільну фотографію ти показав(-ла) б нам через двадцять років?",
+      "version": 2,
+      "previous_id": "us-09"
     },
     {
-      "id": "us-10",
+      "id": "us-v2-10",
       "category": "us",
-      "text": "Який мій жест допомагає тобі видихнути?",
-      "version": 1
+      "text": "Що я роблю такого, від чого ти мимоволі усміхаєшся?",
+      "version": 2,
+      "previous_id": "us-10"
     },
     {
-      "id": "us-11",
+      "id": "us-v2-11",
       "category": "us",
       "text": "Де ти хотів(-ла) б зустріти зі мною світанок?",
-      "version": 1
+      "version": 2,
+      "previous_id": "us-11"
     },
     {
-      "id": "us-12",
+      "id": "us-v2-12",
       "category": "us",
       "text": "Яка наша маленька традиція заслуговує на продовження?",
-      "version": 1
+      "version": 2,
+      "previous_id": "us-12"
     },
     {
-      "id": "us-13",
+      "id": "us-v2-13",
       "category": "us",
       "text": "Що в мені приємно здивувало тебе з часом?",
-      "version": 1
+      "version": 2,
+      "previous_id": "us-13"
     },
     {
-      "id": "us-14",
+      "id": "us-v2-14",
       "category": "us",
-      "text": "Який наш смішний промах досі викликає усмішку?",
-      "version": 1
+      "text": "Якби ми зняли комедію про наше життя, яка сцена обов’язково мала б до неї потрапити?",
+      "version": 2,
+      "previous_id": "us-14"
     },
     {
-      "id": "us-15",
+      "id": "us-v2-15",
       "category": "us",
       "text": "Яку страву ти пов’язуєш із нами?",
-      "version": 1
+      "version": 2,
+      "previous_id": "us-15"
     },
     {
-      "id": "us-16",
+      "id": "us-v2-16",
       "category": "us",
-      "text": "Як би ти назвав(-ла) розділ книги про цей період нашого життя?",
-      "version": 1
+      "text": "Про що ми колись сперечалися, а тепер обоє згадуємо з усмішкою?",
+      "version": 2,
+      "previous_id": "us-16"
     },
     {
-      "id": "us-17",
+      "id": "us-v2-17",
       "category": "us",
       "text": "Який день удвох ти хотів(-ла) б пережити повільніше?",
-      "version": 1
+      "version": 2,
+      "previous_id": "us-17"
     },
     {
-      "id": "us-18",
+      "id": "us-v2-18",
       "category": "us",
-      "text": "Що ти помічаєш у мені, коли ми мовчимо поруч?",
-      "version": 1
+      "text": "Коли нам було добре просто мовчати поруч?",
+      "version": 2,
+      "previous_id": "us-18"
     },
     {
-      "id": "us-19",
+      "id": "us-v2-19",
       "category": "us",
-      "text": "Який невеликий подарунок від мене залишив теплий слід?",
-      "version": 1
+      "text": "Який невеликий подарунок від мене залишив теплий спогад?",
+      "version": 2,
+      "previous_id": "us-19"
     },
     {
-      "id": "us-20",
+      "id": "us-v2-20",
       "category": "us",
-      "text": "Куди ми могли б повернутися вже трохи іншими людьми?",
-      "version": 1
+      "text": "Що з нашого першого побачення ти пам’ятаєш, а я міг(-ла) вже забути?",
+      "version": 2,
+      "previous_id": "us-20"
     },
     {
-      "id": "us-21",
+      "id": "us-v2-21",
       "category": "us",
-      "text": "Які три слова описують наше найзатишніше місце?",
-      "version": 1
+      "text": "Як би ми провели суботу, якби сьогодні зникли всі плани?",
+      "version": 2,
+      "previous_id": "us-21"
     },
     {
-      "id": "us-22",
+      "id": "us-v2-22",
       "category": "us",
-      "text": "Яку спільну справу ти хотів(-ла) б спробувати вперше?",
-      "version": 1
+      "text": "Чого тобі хотілося б уперше навчитися разом зі мною?",
+      "version": 2,
+      "previous_id": "us-22"
     },
     {
-      "id": "us-23",
+      "id": "us-v2-23",
       "category": "us",
       "text": "Який момент змусив тебе подумати: «Ми впоралися»?",
-      "version": 1
+      "version": 2,
+      "previous_id": "us-23"
     },
     {
-      "id": "us-24",
+      "id": "us-v2-24",
       "category": "us",
-      "text": "Що ти цінуєш у наших буденних розмовах?",
-      "version": 1
+      "text": "На яку тему наші розмови завжди тривають довше, ніж ми планували?",
+      "version": 2,
+      "previous_id": "us-24"
     },
     {
-      "id": "us-25",
+      "id": "us-v2-25",
       "category": "us",
-      "text": "Яку нашу історію ти розповів(-ла) б нам через двадцять років?",
-      "version": 1
+      "text": "Про що ти мрієш сказати нам через рік: «Як добре, що ми це зробили»?",
+      "version": 2,
+      "previous_id": "us-25"
     },
     {
-      "id": "us-26",
+      "id": "us-v2-26",
       "category": "us",
-      "text": "Що робить нашу кухню або стіл місцем зустрічі?",
-      "version": 1
+      "text": "Згадай нашу найбезглуздішу покупку. Чому вона досі нам подобається або чим нас навчила?",
+      "version": 2,
+      "previous_id": "us-26"
     },
     {
-      "id": "us-27",
+      "id": "us-v2-27",
       "category": "us",
       "text": "Який маршрут містом став для тебе нашим?",
-      "version": 1
+      "version": 2,
+      "previous_id": "us-27"
     },
     {
-      "id": "us-28",
+      "id": "us-v2-28",
       "category": "us",
       "text": "Яке моє повідомлення було особливо вчасним?",
-      "version": 1
+      "version": 2,
+      "previous_id": "us-28"
     },
     {
-      "id": "us-29",
+      "id": "us-v2-29",
       "category": "us",
-      "text": "Що ти хотів(-ла) б частіше помічати в наших днях?",
-      "version": 1
+      "text": "Що з того, як ми проводимо час разом, тобі хотілося б зберегти надовго?",
+      "version": 2,
+      "previous_id": "us-29"
     },
     {
-      "id": "us-30",
+      "id": "us-v2-30",
       "category": "us",
-      "text": "Який добрий спогад ми могли б створити вже цього тижня?",
-      "version": 1
+      "text": "Що приємне й просте ми могли б зробити разом найближчими днями?",
+      "version": 2,
+      "previous_id": "us-30"
     },
     {
-      "id": "dessert-01",
+      "id": "dessert-v2-01",
       "category": "dessert",
-      "text": "Яку романтичну записку було б приємно знайти в кишені?",
-      "version": 1
+      "text": "Яку романтичну записку тобі було б приємно знайти в кишені?",
+      "version": 2,
+      "previous_id": "dessert-01"
     },
     {
-      "id": "dessert-02",
+      "id": "dessert-v2-02",
       "category": "dessert",
-      "text": "Як виглядало б наше побачення за ціною двох чашок кави?",
-      "version": 1
+      "text": "Уяви: у нас лише година на побачення й дві чашки кави. Куди запросиш мене?",
+      "version": 2,
+      "previous_id": "dessert-02"
     },
     {
-      "id": "dessert-03",
+      "id": "dessert-v2-03",
       "category": "dessert",
-      "text": "Яка музика додала б іскри нашому вечору?",
-      "version": 1
+      "text": "Під яку пісню ти хотів(-ла) б потанцювати зі мною на кухні?",
+      "version": 2,
+      "previous_id": "dessert-03"
     },
     {
-      "id": "dessert-04",
+      "id": "dessert-v2-04",
       "category": "dessert",
       "text": "Який комплімент від мене ти хотів(-ла) б почути сьогодні?",
-      "version": 1
+      "version": 2,
+      "previous_id": "dessert-04"
     },
     {
-      "id": "dessert-05",
+      "id": "dessert-v2-05",
       "category": "dessert",
-      "text": "Який несподіваний образ для побачення тебе потішив би?",
-      "version": 1
+      "text": "У чому ти запросив(-ла) б мене на побачення, щоб трохи здивувати?",
+      "version": 2,
+      "previous_id": "dessert-05"
     },
     {
-      "id": "dessert-06",
+      "id": "dessert-v2-06",
       "category": "dessert",
       "text": "Куди ти запросив(-ла) б мене, якби ми щойно познайомилися?",
-      "version": 1
+      "version": 2,
+      "previous_id": "dessert-06"
     },
     {
-      "id": "dessert-07",
+      "id": "dessert-v2-07",
       "category": "dessert",
-      "text": "Який аромат асоціюється в тебе з романтикою?",
-      "version": 1
+      "text": "Чим має пахнути наше ідеальне ліниве побачення: кавою, морем чи чимось зовсім іншим?",
+      "version": 2,
+      "previous_id": "dessert-07"
     },
     {
-      "id": "dessert-08",
+      "id": "dessert-v2-08",
       "category": "dessert",
-      "text": "Яка грайлива назва пасувала б нашому дуету?",
-      "version": 1
+      "text": "Як би ти познайомився(-лася) зі мною сьогодні, якби я сидів(-ла) за сусіднім столиком?",
+      "version": 2,
+      "previous_id": "dessert-08"
     },
     {
-      "id": "dessert-09",
+      "id": "dessert-v2-09",
       "category": "dessert",
       "text": "Якби ми влаштували пікнік у кімнаті, що було б у кошику?",
-      "version": 1
+      "version": 2,
+      "previous_id": "dessert-09"
     },
     {
-      "id": "dessert-10",
+      "id": "dessert-v2-10",
       "category": "dessert",
       "text": "Який танець ти спробував(-ла) б зі мною без глядачів?",
-      "version": 1
+      "version": 2,
+      "previous_id": "dessert-10"
     },
     {
-      "id": "dessert-11",
+      "id": "dessert-v2-11",
       "category": "dessert",
-      "text": "Який десерт найкраще передає твій сьогоднішній настрій?",
-      "version": 1
+      "text": "Хто з нас краще влаштував би побачення-сюрприз і чому?",
+      "version": 2,
+      "previous_id": "dessert-11"
     },
     {
-      "id": "dessert-12",
+      "id": "dessert-v2-12",
       "category": "dessert",
       "text": "Як ти любиш отримувати запрошення на побачення?",
-      "version": 1
+      "version": 2,
+      "previous_id": "dessert-12"
     },
     {
-      "id": "dessert-13",
+      "id": "dessert-v2-13",
       "category": "dessert",
       "text": "Що перетворює звичайну вечерю на романтичну?",
-      "version": 1
+      "version": 2,
+      "previous_id": "dessert-13"
     },
     {
-      "id": "dessert-14",
+      "id": "dessert-v2-14",
       "category": "dessert",
-      "text": "Який мій погляд ти впізнав(-ла) б серед сотні?",
-      "version": 1
+      "text": "Коли я востаннє змусив(-ла) тебе ніяково усміхнутися?",
+      "version": 2,
+      "previous_id": "dessert-14"
     },
     {
-      "id": "dessert-15",
+      "id": "dessert-v2-15",
       "category": "dessert",
-      "text": "Яку маленьку таємну усмішку ми могли б мати на людях?",
-      "version": 1
+      "text": "Придумай нам таємний знак, який на людях означатиме: «Хочу побути з тобою вдвох». Який він?",
+      "version": 2,
+      "previous_id": "dessert-15"
     },
     {
-      "id": "dessert-16",
+      "id": "dessert-v2-16",
       "category": "dessert",
       "text": "Що ти обрав(-ла) б: побачення на даху чи біля води, і чому?",
-      "version": 1
+      "version": 2,
+      "previous_id": "dessert-16"
     },
     {
-      "id": "dessert-17",
+      "id": "dessert-v2-17",
       "category": "dessert",
-      "text": "Яка кумедна спроба флірту могла б тебе розсмішити?",
-      "version": 1
+      "text": "Який навмисно безглуздий комплімент міг би мене розсмішити?",
+      "version": 2,
+      "previous_id": "dessert-17"
     },
     {
-      "id": "dessert-18",
+      "id": "dessert-v2-18",
       "category": "dessert",
-      "text": "Який колір пасує нашому ідеальному вечору?",
-      "version": 1
+      "text": "Збираємося на вечірнє побачення. Що ти обрав(-ла) б для мене з мого гардероба?",
+      "version": 2,
+      "previous_id": "dessert-18"
     },
     {
-      "id": "dessert-19",
+      "id": "dessert-v2-19",
       "category": "dessert",
       "text": "Яке кіношне побачення ти переробив(-ла) б під нас?",
-      "version": 1
+      "version": 2,
+      "previous_id": "dessert-19"
     },
     {
-      "id": "dessert-20",
+      "id": "dessert-v2-20",
       "category": "dessert",
-      "text": "Яка дрібна увага зранку налаштовує тебе на романтику?",
-      "version": 1
+      "text": "Що романтичне можна зробити для тебе за п’ять хвилин зранку?",
+      "version": 2,
+      "previous_id": "dessert-20"
     },
     {
-      "id": "dessert-21",
+      "id": "dessert-v2-21",
       "category": "dessert",
       "text": "Що тобі приємніше: сюрприз із підказкою чи чіткий план?",
-      "version": 1
+      "version": 2,
+      "previous_id": "dessert-21"
     },
     {
-      "id": "dessert-22",
+      "id": "dessert-v2-22",
       "category": "dessert",
       "text": "Яку страву було б весело готувати вдвох під музику?",
-      "version": 1
+      "version": 2,
+      "previous_id": "dessert-22"
     },
     {
-      "id": "dessert-23",
+      "id": "dessert-v2-23",
       "category": "dessert",
       "text": "Як би виглядало наше побачення без жодного екрана?",
-      "version": 1
+      "version": 2,
+      "previous_id": "dessert-23"
     },
     {
-      "id": "dessert-24",
+      "id": "dessert-v2-24",
       "category": "dessert",
-      "text": "Який аксесуар ти вибрав(-ла) б для мене на святковий вечір?",
-      "version": 1
+      "text": "На один вечір я стаю твоїм особистим гідом. Яке місце ти попросиш мені показати?",
+      "version": 2,
+      "previous_id": "dessert-24"
     },
     {
-      "id": "dessert-25",
+      "id": "dessert-v2-25",
       "category": "dessert",
       "text": "Який романтичний жест на відстані тобі близький?",
-      "version": 1
+      "version": 2,
+      "previous_id": "dessert-25"
     },
     {
-      "id": "dessert-26",
+      "id": "dessert-v2-26",
       "category": "dessert",
-      "text": "Про що ти запитав(-ла) б мене під час першого танцю?",
-      "version": 1
+      "text": "Якби наше наступне побачення мало назву, що було б на запрошенні?",
+      "version": 2,
+      "previous_id": "dessert-26"
     },
     {
-      "id": "dessert-27",
+      "id": "dessert-v2-27",
       "category": "dessert",
       "text": "Яку приємну витівку можна вигадати для дощового дня?",
-      "version": 1
+      "version": 2,
+      "previous_id": "dessert-27"
     },
     {
-      "id": "dessert-28",
+      "id": "dessert-v2-28",
       "category": "dessert",
       "text": "Як ти любиш, щоб закінчувалося вдале побачення?",
-      "version": 1
+      "version": 2,
+      "previous_id": "dessert-28"
     },
     {
-      "id": "dessert-29",
+      "id": "dessert-v2-29",
       "category": "dessert",
       "text": "Яке місце в нашому місті має недооцінений романтичний потенціал?",
-      "version": 1
+      "version": 2,
+      "previous_id": "dessert-29"
     },
     {
-      "id": "dessert-30",
+      "id": "dessert-v2-30",
       "category": "dessert",
-      "text": "Який привід для маленького свята ми могли б вигадати самі?",
-      "version": 1
+      "text": "Який маленький сюрприз ти залишив(-ла) б мені на звичайний вівторок?",
+      "version": 2,
+      "previous_id": "dessert-30"
     },
     {
-      "id": "trust-01",
+      "id": "trust-v2-01",
       "category": "trust",
-      "text": "Як мені зрозуміти, що тобі зараз потрібне слухання, а не порада?",
-      "version": 1
+      "text": "Коли тобі востаннє було важко попросити мене про допомогу?",
+      "version": 2,
+      "previous_id": "trust-01"
     },
     {
-      "id": "trust-02",
+      "id": "trust-v2-02",
       "category": "trust",
-      "text": "Про яку свою межу тобі хотілося б говорити легше?",
-      "version": 1
+      "text": "Що ти зазвичай приховуєш за словами «все нормально»?",
+      "version": 2,
+      "previous_id": "trust-02"
     },
     {
-      "id": "trust-03",
+      "id": "trust-v2-03",
       "category": "trust",
-      "text": "Які слова допомагають тобі відчувати, що тебе почули?",
-      "version": 1
+      "text": "Які мої слова колись підтримали тебе сильніше, ніж я міг(-ла) здогадуватися?",
+      "version": 2,
+      "previous_id": "trust-03"
     },
     {
-      "id": "trust-04",
+      "id": "trust-v2-04",
       "category": "trust",
-      "text": "Що для тебе означає надійність у дрібницях?",
-      "version": 1
+      "text": "За що ти вдячний(-а) собі, але рідко говориш про це вголос?",
+      "version": 2,
+      "previous_id": "trust-04"
     },
     {
-      "id": "trust-05",
+      "id": "trust-v2-05",
       "category": "trust",
-      "text": "Як ми можемо поважати приватність телефонів одне одного?",
-      "version": 1
+      "text": "Чого ти боявся(-лася) на початку наших стосунків і як ставишся до цього зараз?",
+      "version": 2,
+      "previous_id": "trust-05"
     },
     {
-      "id": "trust-06",
+      "id": "trust-v2-06",
       "category": "trust",
-      "text": "Який спосіб попросити паузу в розмові тобі зручний?",
-      "version": 1
+      "text": "Про що тобі легше написати, ніж сказати мені наживо?",
+      "version": 2,
+      "previous_id": "trust-06"
     },
     {
-      "id": "trust-07",
+      "id": "trust-v2-07",
       "category": "trust",
-      "text": "Що допомагає тобі повертатися до складної теми?",
-      "version": 1
+      "text": "Коли ти відчуваєш, що я справді тебе розумію?",
+      "version": 2,
+      "previous_id": "trust-07"
     },
     {
-      "id": "trust-08",
+      "id": "trust-v2-08",
       "category": "trust",
-      "text": "Як ти хотів(-ла) б чути вибачення?",
-      "version": 1
+      "text": "Яке вибачення у своєму житті ти запам’ятав(-ла) найбільше?",
+      "version": 2,
+      "previous_id": "trust-08"
     },
     {
-      "id": "trust-09",
+      "id": "trust-v2-09",
       "category": "trust",
-      "text": "Коли тобі найпростіше сказати «я не знаю»?",
-      "version": 1
+      "text": "У чому тобі хотілося б мати право не бути сильним(-ою) поруч зі мною?",
+      "version": 2,
+      "previous_id": "trust-09"
     },
     {
-      "id": "trust-10",
+      "id": "trust-v2-10",
       "category": "trust",
-      "text": "Яке запитання варто ставити перед тим, як давати пораду?",
-      "version": 1
+      "text": "Чи є щось, про що ти передумав(-ла), але ще не встиг(-ла) мені розповісти?",
+      "version": 2,
+      "previous_id": "trust-10"
     },
     {
-      "id": "trust-11",
+      "id": "trust-v2-11",
       "category": "trust",
-      "text": "Що для тебе відрізняє турботу від контролю?",
-      "version": 1
+      "text": "Що люди часто неправильно розуміють у твоєму характері?",
+      "version": 2,
+      "previous_id": "trust-11"
     },
     {
-      "id": "trust-12",
+      "id": "trust-v2-12",
       "category": "trust",
       "text": "Як я можу дбайливо реагувати на твоє «ні»?",
-      "version": 1
+      "version": 2,
+      "previous_id": "trust-12"
     },
     {
-      "id": "trust-13",
+      "id": "trust-v2-13",
       "category": "trust",
-      "text": "Які твої переживання не потребують негайного розв’язання?",
-      "version": 1
+      "text": "Який недавній маленький успіх був для тебе насправді великим?",
+      "version": 2,
+      "previous_id": "trust-13"
     },
     {
-      "id": "trust-14",
+      "id": "trust-v2-14",
       "category": "trust",
-      "text": "Що дає тобі відчуття свободи всередині стосунків?",
-      "version": 1
+      "text": "Коли ти пишався(-лася) нами, але нічого не сказав(-ла)?",
+      "version": 2,
+      "previous_id": "trust-14"
     },
     {
-      "id": "trust-15",
+      "id": "trust-v2-15",
       "category": "trust",
-      "text": "Як ти хочеш домовлятися про час наодинці?",
-      "version": 1
+      "text": "Яка твоя невпевненість стає меншою поруч зі мною?",
+      "version": 2,
+      "previous_id": "trust-15"
     },
     {
-      "id": "trust-16",
+      "id": "trust-v2-16",
       "category": "trust",
-      "text": "Яку помилку ти хотів(-ла) б мати право визнати без сорому?",
-      "version": 1
+      "text": "Що ти хотів(-ла) б, щоб я знав(-ла) про твій досвід до нашого знайомства?",
+      "version": 2,
+      "previous_id": "trust-16"
     },
     {
-      "id": "trust-17",
+      "id": "trust-v2-17",
       "category": "trust",
-      "text": "Що допомагає тобі довіряти власному темпу зближення?",
-      "version": 1
+      "text": "Кому, крім мене, тобі легко довіряти і завдяки чому?",
+      "version": 2,
+      "previous_id": "trust-17"
     },
     {
-      "id": "trust-18",
+      "id": "trust-v2-18",
       "category": "trust",
-      "text": "Як запитати про складний день, не влаштовуючи допит?",
-      "version": 1
+      "text": "Що з твоїх переживань зараз не потребує поради, а лише уважного слухання?",
+      "version": 2,
+      "previous_id": "trust-18"
     },
     {
-      "id": "trust-19",
+      "id": "trust-v2-19",
       "category": "trust",
-      "text": "Який вид підтримки може ненавмисно втомлювати тебе?",
-      "version": 1
+      "text": "У який момент моя турбота була не зовсім такою, як тобі хотілося?",
+      "version": 2,
+      "previous_id": "trust-19"
     },
     {
-      "id": "trust-20",
+      "id": "trust-v2-20",
       "category": "trust",
-      "text": "Що тобі важливо знати перед розмовою про гроші?",
-      "version": 1
+      "text": "Яка сімейна звичка впливає на тебе сильніше, ніж здається іншим?",
+      "version": 2,
+      "previous_id": "trust-20"
     },
     {
-      "id": "trust-21",
+      "id": "trust-v2-21",
       "category": "trust",
-      "text": "Як ми могли б говорити про ревнощі без звинувачень?",
-      "version": 1
+      "text": "Коли тобі найважче повірити компліменту від мене?",
+      "version": 2,
+      "previous_id": "trust-21"
     },
     {
-      "id": "trust-22",
+      "id": "trust-v2-22",
       "category": "trust",
-      "text": "Яку домовленість варто час від часу перевіряти заново?",
-      "version": 1
+      "text": "Про яку нашу складну розмову ти думаєш: «Добре, що ми її не відклали»?",
+      "version": 2,
+      "previous_id": "trust-22"
     },
     {
-      "id": "trust-23",
+      "id": "trust-v2-23",
       "category": "trust",
-      "text": "Що для тебе означає залишатися собою поруч зі мною?",
-      "version": 1
+      "text": "У чому ти сьогодні відчуваєш себе іншою людиною, ніж рік тому?",
+      "version": 2,
+      "previous_id": "trust-23"
     },
     {
-      "id": "trust-24",
+      "id": "trust-v2-24",
       "category": "trust",
-      "text": "Як ти відчуваєш, що твої особисті дружби поважають?",
-      "version": 1
+      "text": "Якою своєю рисою ти дорожиш, навіть якщо вона іноді ускладнює нам життя?",
+      "version": 2,
+      "previous_id": "trust-24"
     },
     {
-      "id": "trust-25",
+      "id": "trust-v2-25",
       "category": "trust",
       "text": "Коли добре мовчання підтримує тебе краще за слова?",
-      "version": 1
+      "version": 2,
+      "previous_id": "trust-25"
     },
     {
-      "id": "trust-26",
+      "id": "trust-v2-26",
       "category": "trust",
-      "text": "Який спосіб виправити непорозуміння тобі найближчий?",
-      "version": 1
+      "text": "Яке непорозуміння між нами навчило тебе чогось важливого?",
+      "version": 2,
+      "previous_id": "trust-26"
     },
     {
-      "id": "trust-27",
+      "id": "trust-v2-27",
       "category": "trust",
-      "text": "Як ти хотів(-ла) б позначати тему, до якої ще не готовий(-а)?",
-      "version": 1
+      "text": "Про що тобі зараз цікаво запитати мене, але ти не знаходив(-ла) нагоди?",
+      "version": 2,
+      "previous_id": "trust-27"
     },
     {
-      "id": "trust-28",
+      "id": "trust-v2-28",
       "category": "trust",
       "text": "Що допомагає тобі просити про допомогу без почуття боргу?",
-      "version": 1
+      "version": 2,
+      "previous_id": "trust-28"
     },
     {
-      "id": "trust-29",
+      "id": "trust-v2-29",
       "category": "trust",
-      "text": "Яку обіцянку краще замінити чесним обговоренням можливостей?",
-      "version": 1
+      "text": "Яку надію щодо нас ти бережеш для себе?",
+      "version": 2,
+      "previous_id": "trust-29"
     },
     {
-      "id": "trust-30",
+      "id": "trust-v2-30",
       "category": "trust",
-      "text": "Як ми зрозуміємо, що наша домовленість досі підходить обом?",
-      "version": 1
+      "text": "Що могло б зробити нашу наступну щиру розмову трохи легшою?",
+      "version": 2,
+      "previous_id": "trust-30"
     },
     {
-      "id": "heat-01",
+      "id": "heat-v2-01",
       "category": "heat",
       "text": "Який наш поцілунок ти хотів(-ла) б згадати в усіх найприємніших подробицях?",
-      "version": 1
+      "version": 2,
+      "previous_id": "heat-01"
     },
     {
-      "id": "heat-02",
+      "id": "heat-v2-02",
       "category": "heat",
       "text": "У якому моєму образі тобі найважче приховати усмішку захоплення?",
-      "version": 1
+      "version": 2,
+      "previous_id": "heat-02"
     },
     {
-      "id": "heat-03",
+      "id": "heat-v2-03",
       "category": "heat",
       "text": "Який мій несподіваний жест колись змусив твоє серце забитися швидше?",
-      "version": 1
+      "version": 2,
+      "previous_id": "heat-03"
     },
     {
-      "id": "heat-04",
+      "id": "heat-v2-04",
       "category": "heat",
       "text": "Як би ти почав(-ла) флірт зі мною, якби ми сьогодні зустрілися в готельному барі?",
-      "version": 1
+      "version": 2,
+      "previous_id": "heat-04"
     },
     {
-      "id": "heat-05",
+      "id": "heat-v2-05",
       "category": "heat",
-      "text": "Який наш вечір мав особливу хімію ще до першого дотику?",
-      "version": 1
+      "text": "Згадай наш вечір, коли між нами іскрило ще до першого дотику. Що створило той настрій?",
+      "version": 2,
+      "previous_id": "heat-05"
     },
     {
-      "id": "heat-06",
+      "id": "heat-v2-06",
       "category": "heat",
       "text": "Які слова від мене могли б перетворити звичайне повідомлення на спокусливе запрошення до розмови?",
-      "version": 1
+      "version": 2,
+      "previous_id": "heat-06"
     },
     {
-      "id": "heat-07",
+      "id": "heat-v2-07",
       "category": "heat",
       "text": "Який повільний танець ти уявляєш для нас, коли за вікном уже стемніло?",
-      "version": 1
+      "version": 2,
+      "previous_id": "heat-07"
     },
     {
-      "id": "heat-08",
+      "id": "heat-v2-08",
       "category": "heat",
-      "text": "Що в моєму голосі або сміху здається тобі особливо привабливим?",
-      "version": 1
+      "text": "Коли мій голос або сміх здається тобі особливо привабливим?",
+      "version": 2,
+      "previous_id": "heat-08"
     },
     {
-      "id": "heat-09",
+      "id": "heat-v2-09",
       "category": "heat",
-      "text": "Яку романтичну сцену для нас ти вигадав(-ла) б у будиночку далеко від міста?",
-      "version": 1
+      "text": "Ми в будиночку далеко від міста, увечері почався дощ. Яким ти уявляєш наш час удвох?",
+      "version": 2,
+      "previous_id": "heat-09"
     },
     {
-      "id": "heat-10",
+      "id": "heat-v2-10",
       "category": "heat",
       "text": "Яка деталь у моїй зовнішності приємно відволікає тебе навіть після довгого знайомства?",
-      "version": 1
+      "version": 2,
+      "previous_id": "heat-10"
     },
     {
-      "id": "heat-11",
+      "id": "heat-v2-11",
       "category": "heat",
       "text": "Який наш ніжний момент ти продовжив(-ла) б ще на кілька хвилин?",
-      "version": 1
+      "version": 2,
+      "previous_id": "heat-11"
     },
     {
-      "id": "heat-12",
+      "id": "heat-v2-12",
       "category": "heat",
       "text": "Яку грайливу фразу ти прошепотів(-ла) б мені під час побачення?",
-      "version": 1
+      "version": 2,
+      "previous_id": "heat-12"
     },
     {
-      "id": "heat-13",
+      "id": "heat-v2-13",
       "category": "heat",
       "text": "Що тобі найбільше подобається в передчутті близькості між нами?",
-      "version": 1
+      "version": 2,
+      "previous_id": "heat-13"
     },
     {
-      "id": "heat-14",
+      "id": "heat-v2-14",
       "category": "heat",
-      "text": "Який аромат, світло й музика склали б твою формулу вечора з іскрою?",
-      "version": 1
+      "text": "Заплющ очі й уяви вечір для нас: яке там світло, музика й аромат?",
+      "version": 2,
+      "previous_id": "heat-14"
     },
     {
-      "id": "heat-15",
+      "id": "heat-v2-15",
       "category": "heat",
       "text": "Яке бажання про наш час удвох тобі було б приємно озвучити без обіцянки його здійснення?",
-      "version": 1
+      "version": 2,
+      "previous_id": "heat-15"
     },
     {
-      "id": "heat-16",
+      "id": "heat-v2-16",
       "category": "heat",
       "text": "Яке моє зізнання про твою привабливість ти хотів(-ла) б почути наодинці?",
-      "version": 1
+      "version": 2,
+      "previous_id": "heat-16"
     },
     {
-      "id": "heat-17",
+      "id": "heat-v2-17",
       "category": "heat",
-      "text": "Яку гру з романтичними підказками ти придумав(-ла) б для нашого побачення?",
-      "version": 1
+      "text": "Якби ти готував(-ла) для мене романтичний квест, якою була б перша підказка?",
+      "version": 2,
+      "previous_id": "heat-17"
     },
     {
-      "id": "heat-18",
+      "id": "heat-v2-18",
       "category": "heat",
       "text": "Який приємний спільний досвід ти повторив(-ла) б у зовсім іншій атмосфері?",
-      "version": 1
+      "version": 2,
+      "previous_id": "heat-18"
     },
     {
-      "id": "heat-19",
+      "id": "heat-v2-19",
       "category": "heat",
       "text": "Який поцілунок для тебе найромантичніший: несподіваний, довгоочікуваний чи після щирої розмови?",
-      "version": 1
+      "version": 2,
+      "previous_id": "heat-19"
     },
     {
-      "id": "heat-20",
+      "id": "heat-v2-20",
       "category": "heat",
       "text": "Як виглядав би наш ідеальний ранок після вечора, який нікуди не поспішав?",
-      "version": 1
+      "version": 2,
+      "previous_id": "heat-20"
     },
     {
-      "id": "heat-21",
+      "id": "heat-v2-21",
       "category": "heat",
-      "text": "Який мій спосіб дивитися на тебе відчувається як тихий флірт?",
-      "version": 1
+      "text": "Як ти розумієш із мого погляду, що я з тобою фліртую?",
+      "version": 2,
+      "previous_id": "heat-21"
     },
     {
-      "id": "heat-22",
+      "id": "heat-v2-22",
       "category": "heat",
       "text": "Яку фантазію про романтичну подорож ти охоче обговорив(-ла) б зі мною?",
-      "version": 1
+      "version": 2,
+      "previous_id": "heat-22"
     },
     {
-      "id": "heat-23",
+      "id": "heat-v2-23",
       "category": "heat",
       "text": "Яка маленька зміна в обстановці могла б додати новизни нашому часу наодинці?",
-      "version": 1
+      "version": 2,
+      "previous_id": "heat-23"
     },
     {
-      "id": "heat-24",
+      "id": "heat-v2-24",
       "category": "heat",
       "text": "Який комплімент про твою чуттєвість звучав би для тебе природно й приємно?",
-      "version": 1
+      "version": 2,
+      "previous_id": "heat-24"
     },
     {
-      "id": "heat-25",
+      "id": "heat-v2-25",
       "category": "heat",
       "text": "У який момент між нами ти відчуваєш найсильнішу суміш ніжності та бажання?",
-      "version": 1
+      "version": 2,
+      "previous_id": "heat-25"
     },
     {
-      "id": "heat-26",
+      "id": "heat-v2-26",
       "category": "heat",
       "text": "Який затишний ритуал після близькості тобі хотілося б зберегти для нас?",
-      "version": 1
+      "version": 2,
+      "previous_id": "heat-26"
     },
     {
-      "id": "heat-27",
+      "id": "heat-v2-27",
       "category": "heat",
-      "text": "Якби ти міг(-ла) залишити мені лише одну грайливу підказку про бажане побачення, що б це було?",
-      "version": 1
+      "text": "Яку грайливу підказку ти залишив(-ла) б мені перед побаченням, щоб я весь день чекав(-ла) вечора?",
+      "version": 2,
+      "previous_id": "heat-27"
     },
     {
-      "id": "heat-28",
+      "id": "heat-v2-28",
       "category": "heat",
       "text": "Яка моя риса приваблює тебе так, як не могла б передати жодна фотографія?",
-      "version": 1
+      "version": 2,
+      "previous_id": "heat-28"
     },
     {
-      "id": "heat-29",
+      "id": "heat-v2-29",
       "category": "heat",
       "text": "Про яку нову романтичну ідею тобі цікаво просто помріяти разом, залишивши право нічого не втілювати?",
-      "version": 1
+      "version": 2,
+      "previous_id": "heat-29"
     },
     {
-      "id": "heat-30",
+      "id": "heat-v2-30",
       "category": "heat",
       "text": "Що допомогло б нам зберегти приємне передчуття наступної зустрічі після сьогоднішнього вечора?",
-      "version": 1
+      "version": 2,
+      "previous_id": "heat-30"
     },
     {
-      "id": "secret-01",
+      "id": "secret-v2-01",
       "category": "secret",
-      "text": "Яку незвичну професію ти спробував(-ла) б на один день?",
-      "version": 1
+      "text": "Яке своє бажання ти досі відкладаєш, бо воно здається «несерйозним»?",
+      "version": 2,
+      "previous_id": "secret-01"
     },
     {
-      "id": "secret-02",
+      "id": "secret-v2-02",
       "category": "secret",
-      "text": "Яка маленька мрія чекає на вільні вихідні?",
-      "version": 1
+      "text": "Чи є маленька мрія, яку ти хотів(-ла) б довірити мені сьогодні?",
+      "version": 2,
+      "previous_id": "secret-02"
     },
     {
-      "id": "secret-03",
+      "id": "secret-v2-03",
       "category": "secret",
-      "text": "Що ти колекціонував(-ла) б, якби місце не мало значення?",
-      "version": 1
+      "text": "Що ти купив(-ла) б собі просто для радості, не пояснюючи нікому навіщо?",
+      "version": 2,
+      "previous_id": "secret-03"
     },
     {
-      "id": "secret-04",
+      "id": "secret-v2-04",
       "category": "secret",
-      "text": "Який лист ти хотів(-ла) б отримати від себе з майбутнього?",
-      "version": 1
+      "text": "Яким ти уявляєш наше життя, коли ніхто не питає про практичність планів?",
+      "version": 2,
+      "previous_id": "secret-04"
     },
     {
-      "id": "secret-05",
+      "id": "secret-v2-05",
       "category": "secret",
-      "text": "Про яку подорож ти любиш думати перед сном?",
-      "version": 1
+      "text": "Куди тобі хотілося б утекти зі мною на кілька днів без великої програми?",
+      "version": 2,
+      "previous_id": "secret-05"
     },
     {
-      "id": "secret-06",
+      "id": "secret-v2-06",
       "category": "secret",
-      "text": "Яке вміння хотілося б опанувати без жодної користі?",
-      "version": 1
+      "text": "Чому ти потай заздриш у людях, якими захоплюєшся?",
+      "version": 2,
+      "previous_id": "secret-06"
     },
     {
-      "id": "secret-07",
+      "id": "secret-v2-07",
       "category": "secret",
       "text": "Яка частина твого характеру рідко помітна іншим?",
-      "version": 1
+      "version": 2,
+      "previous_id": "secret-07"
     },
     {
-      "id": "secret-08",
+      "id": "secret-v2-08",
       "category": "secret",
-      "text": "Як виглядав би твій день без необхідності справляти враження?",
-      "version": 1
+      "text": "Що ти любиш робити, коли вдома зовсім один(-на)?",
+      "version": 2,
+      "previous_id": "secret-08"
     },
     {
-      "id": "secret-09",
+      "id": "secret-v2-09",
       "category": "secret",
-      "text": "Яку дитячу цікавість ти хотів(-ла) б повернути?",
-      "version": 1
+      "text": "Яку свою дитячу мрію ти досі не готовий(-а) списати з рахунків?",
+      "version": 2,
+      "previous_id": "secret-09"
     },
     {
-      "id": "secret-10",
+      "id": "secret-v2-10",
       "category": "secret",
-      "text": "Яка книга могла б підказати мені щось про твій внутрішній світ?",
-      "version": 1
+      "text": "Про яку сторону твого життя я, можливо, знаю менше, ніж мені здається?",
+      "version": 2,
+      "previous_id": "secret-10"
     },
     {
-      "id": "secret-11",
+      "id": "secret-v2-11",
       "category": "secret",
       "text": "Який подарунок свідчив би, що тебе уважно слухали?",
-      "version": 1
+      "version": 2,
+      "previous_id": "secret-11"
     },
     {
-      "id": "secret-12",
+      "id": "secret-v2-12",
       "category": "secret",
-      "text": "Про яку тему ти міг(-ла) б захоплено говорити годину?",
-      "version": 1
+      "text": "Коли ти востаннє подумав(-ла): «От би ми з тобою теж так спробували»?",
+      "version": 2,
+      "previous_id": "secret-12"
     },
     {
-      "id": "secret-13",
+      "id": "secret-v2-13",
       "category": "secret",
       "text": "Яке місце ти хотів(-ла) б показати мені тільки тому, що воно твоє?",
-      "version": 1
+      "version": 2,
+      "previous_id": "secret-13"
     },
     {
-      "id": "secret-14",
+      "id": "secret-v2-14",
       "category": "secret",
-      "text": "Який невеликий ризик ти обрав(-ла) б заради цікавості?",
-      "version": 1
+      "text": "На яку спонтанну пригоду ти легше наважився(-лася) б разом зі мною?",
+      "version": 2,
+      "previous_id": "secret-14"
     },
     {
-      "id": "secret-15",
+      "id": "secret-v2-15",
       "category": "secret",
       "text": "Що ти створив(-ла) б, якби не боявся(-лася) недосконалості?",
-      "version": 1
+      "version": 2,
+      "previous_id": "secret-15"
     },
     {
-      "id": "secret-16",
+      "id": "secret-v2-16",
       "category": "secret",
       "text": "Яка твоя улюблена мрія зовсім не потребує великих грошей?",
-      "version": 1
+      "version": 2,
+      "previous_id": "secret-16"
     },
     {
-      "id": "secret-17",
+      "id": "secret-v2-17",
       "category": "secret",
-      "text": "Який святковий ритуал ти хотів(-ла) б придумати для себе?",
-      "version": 1
+      "text": "Чи є свято, яке ти потай хотів(-ла) б відзначити зовсім інакше, ніж заведено?",
+      "version": 2,
+      "previous_id": "secret-17"
     },
     {
-      "id": "secret-18",
+      "id": "secret-v2-18",
       "category": "secret",
-      "text": "Яку роль у виставі ти таємно хотів(-ла) б зіграти?",
-      "version": 1
+      "text": "Яку нову роль у житті тобі цікаво було б приміряти, якби ніхто не здивувався?",
+      "version": 2,
+      "previous_id": "secret-18"
     },
     {
-      "id": "secret-19",
+      "id": "secret-v2-19",
       "category": "secret",
-      "text": "Яка запахова або смакова пам’ять переносить тебе в дитинство?",
-      "version": 1
+      "text": "Яка розкіш для тебе — не про гроші?",
+      "version": 2,
+      "previous_id": "secret-19"
     },
     {
-      "id": "secret-20",
+      "id": "secret-v2-20",
       "category": "secret",
       "text": "Який комплімент про твій характер рідко звучить, але важливий?",
-      "version": 1
+      "version": 2,
+      "previous_id": "secret-20"
     },
     {
-      "id": "secret-21",
+      "id": "secret-v2-21",
       "category": "secret",
-      "text": "Що ти хотів(-ла) б відкласти в капсулу часу для нас?",
-      "version": 1
+      "text": "Що ти хотів(-ла) б, щоб я пам’ятав(-ла) про тебе навіть через багато років?",
+      "version": 2,
+      "previous_id": "secret-21"
     },
     {
-      "id": "secret-22",
+      "id": "secret-v2-22",
       "category": "secret",
-      "text": "Яку пригоду можна пережити в межах одного кварталу?",
-      "version": 1
+      "text": "Який дивний або кумедний задум ти досі тримаєш у нотатках?",
+      "version": 2,
+      "previous_id": "secret-22"
     },
     {
-      "id": "secret-23",
+      "id": "secret-v2-23",
       "category": "secret",
       "text": "Який твій талант заслуговує більше місця в житті?",
-      "version": 1
+      "version": 2,
+      "previous_id": "secret-23"
     },
     {
-      "id": "secret-24",
+      "id": "secret-v2-24",
       "category": "secret",
-      "text": "Про який дім ти мрієш, якщо описувати лише відчуття?",
-      "version": 1
+      "text": "Який наш звичайний день із майбутнього ти іноді уявляєш перед сном?",
+      "version": 2,
+      "previous_id": "secret-24"
     },
     {
-      "id": "secret-25",
+      "id": "secret-v2-25",
       "category": "secret",
-      "text": "Яку власну традицію ти хотів(-ла) б колись передати далі?",
-      "version": 1
+      "text": "Що ти хотів(-ла) б одного разу зробити тільки для нас, без фото й гостей?",
+      "version": 2,
+      "previous_id": "secret-25"
     },
     {
-      "id": "secret-26",
+      "id": "secret-v2-26",
       "category": "secret",
-      "text": "Яка несподівана тема пробуджує в тобі дослідника?",
-      "version": 1
+      "text": "Яка несподівана думка про мене нещодавно змусила тебе усміхнутися?",
+      "version": 2,
+      "previous_id": "secret-26"
     },
     {
-      "id": "secret-27",
+      "id": "secret-v2-27",
       "category": "secret",
-      "text": "Що ти зробив(-ла) б у день, повністю присвячений цікавості?",
-      "version": 1
+      "text": "Якби на місяць можна було прибрати одну турботу, чому ти присвятив(-ла) б звільнений час?",
+      "version": 2,
+      "previous_id": "secret-27"
     },
     {
-      "id": "secret-28",
+      "id": "secret-v2-28",
       "category": "secret",
       "text": "Яку свою зміну за останній рік ти хотів(-ла) б відсвяткувати?",
-      "version": 1
+      "version": 2,
+      "previous_id": "secret-28"
     },
     {
-      "id": "secret-29",
+      "id": "secret-v2-29",
       "category": "secret",
       "text": "Яке побажання собі ти досі соромишся сказати вголос?",
-      "version": 1
+      "version": 2,
+      "previous_id": "secret-29"
     },
     {
-      "id": "secret-30",
+      "id": "secret-v2-30",
       "category": "secret",
       "text": "Яку невелику мрію нам було б приємно підтримати одне в одному?",
-      "version": 1
+      "version": 2,
+      "previous_id": "secret-30"
     }
   ],
   "questionnaires": [

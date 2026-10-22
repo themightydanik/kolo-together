@@ -11,6 +11,7 @@ if (
 )
   throw new Error('Only disposable local kolo_test is allowed')
 const pool = new pg.Pool({ connectionString: url, max: 10 })
+let catalogUpgrade
 const uid = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 async function asUser(n, sql, args = []) {
   const c = await pool.connect()
@@ -57,7 +58,27 @@ before(async () => {
       const historical = await task(90)
       await complete(90, (await instance(historical)).id)
     }
+    if(name==='20261023120000_product_experience_catalog.sql'){
+      for(const n of [91,92,93])await pool.query('insert into auth.users values($1,$2,$3)',[uid(n),`user${n}@example.test`,new Date()])
+      await resolve(91,await invite(90,91));await create(92);await resolve(93,await invite(92,93))
+      const active=(await ec(90,'start_game')).id;await ec(91,'accept',active);await ec(90,'draw',active,0)
+      await ec(90,'submit',active,0,{slot:'1',answers:'До оновлення',publish:true});await ec(91,'skip',active,0,{slot:'1'})
+      const pending=(await ec(92,'start_game')).id
+      const snapshot=async()=>JSON.stringify((await pool.query("select jsonb_build_object('cards',(select jsonb_agg(to_jsonb(c) order by c.id) from public.connection_catalog c where kind='card' and version=1),'deck',(select jsonb_agg(to_jsonb(d) order by d.position) from public.connection_deck d where session_id=$1),'answers',(select jsonb_agg(to_jsonb(a) order by user_id) from public.connection_answers a where session_id=$1)) data",[active])).rows[0].data)
+      catalogUpgrade={active,pending,snapshot,before:await snapshot()}
+    }
     await pool.query(await readFile('supabase/migrations/' + name, 'utf8'))
+    if(name==='20261023120000_product_experience_catalog.sql'){
+      assert.equal(await catalogUpgrade.snapshot(),catalogUpgrade.before,'published catalog, existing deck and answers are byte-for-byte unchanged')
+      await ec(90,'draw',catalogUpgrade.active,1)
+      assert.equal((await er(90,'session',catalogUpgrade.active)).card.version,1,'existing active game continues v1')
+      await ec(93,'accept',catalogUpgrade.pending)
+      assert.equal((await pool.query("select count(*)::int n from public.connection_deck d join public.connection_catalog c on c.id=d.card_id and c.kind='card' where d.session_id=$1 and c.version=1",[catalogUpgrade.pending])).rows[0].n,150,'pending pre-upgrade invite stays v1')
+      await ec(92,'close',catalogUpgrade.pending)
+      const fresh=(await ec(92,'start_game',null,1,{version:1})).id;await ec(93,'accept',fresh)
+      assert.equal((await pool.query("select count(*)::int n from public.connection_deck d join public.connection_catalog c on c.id=d.card_id and c.kind='card' where d.session_id=$1 and c.version=2",[fresh])).rows[0].n,150,'new games use v2 despite a client-supplied version')
+    }
+
     if (name === '20261021120000_couple_rituals.sql') {
       assert.deepEqual(await progress(90),{xp:20,coins:10},'ritual migration preserves existing historical progress')
       assert.equal((await statistics(90)).personal.tasks,1)
@@ -3697,7 +3718,7 @@ const game=async()=>{await epair();const s=await ec(1,'start_game');await ec(2,'
 const quizAnswers=async(id)=>Object.fromEntries((await pool.query("select content from public.connection_catalog where kind='questionnaire' and id=$1",[id])).rows[0].content.questions.map(q=>[q.id,q.type==='scale'?'4':'talk']))
 const moodPayload=(day,shared=false)=>({day,mood:'calm',intensity:3,note:'Мій день',support:true,shared})
 test('connection catalog: 150 unique original Ukrainian cards, 30 per category, eight ten-question questionnaires',async()=>{
- const cards=(await pool.query("select content from public.connection_catalog where kind='card'")).rows.map(r=>r.content)
+ const cards=(await pool.query("select content from public.connection_catalog where kind='card' and version=2")).rows.map(r=>r.content)
  assert.equal(cards.length,150);assert.equal(new Set(cards.map(c=>c.text)).size,150)
  for(const c of ['us','dessert','trust','heat','secret'])assert.equal(cards.filter(x=>x.category===c).length,30)
  assert.ok(cards.every(c=>c.text.length>25&&c.text.endsWith('?')))
@@ -3833,7 +3854,7 @@ test('connection transactional rollback includes COMMIT failure and concurrently
 })
 test('revoking intimate-category consent hides its card and partner answers through RPC and direct RLS',async()=>{
  const id=await game();await ec(1,'opt',id,0,{enabled:true});await ec(2,'opt',id,0,{enabled:true})
- await pool.query("insert into public.connection_draws values($1,1,'heat-01')",[id]);await pool.query('update public.connection_sessions set position=1 where id=$1',[id]);await pool.query("update public.connection_deck set drawn=true where session_id=$1 and card_id='heat-01'",[id])
+ await pool.query("insert into public.connection_draws values($1,1,'heat-v2-01')",[id]);await pool.query('update public.connection_sessions set position=1 where id=$1',[id]);await pool.query("update public.connection_deck set drawn=true where session_id=$1 and card_id='heat-v2-01'",[id])
  await ec(1,'submit',id,0,{slot:'1',answers:'Відповідь один',publish:true});await ec(2,'submit',id,0,{slot:'1',answers:'Відповідь два',publish:true})
  assert.equal((await asUser(1,'select * from public.connection_answers')).length,2)
  await ec(2,'opt',id,0,{enabled:false})
@@ -3984,7 +4005,7 @@ test('review: exact one-card progress with simultaneous draws, UUID replay, lost
 })
 for(const category of ['heat','secret'])test(`review: ${category} requires both current consents in every read path, including after completion and re-enabling`,async()=>{
  const id=await game()
- await pool.query('insert into public.connection_draws values($1,1,$2)',[id,category+'-01']);await pool.query('update public.connection_sessions set position=1 where id=$1',[id]);await pool.query('update public.connection_deck set drawn=true where session_id=$1 and card_id=$2',[id,category+'-01'])
+ await pool.query('insert into public.connection_draws values($1,1,$2)',[id,category+'-v2-01']);await pool.query('update public.connection_sessions set position=1 where id=$1',[id]);await pool.query('update public.connection_deck set drawn=true where session_id=$1 and card_id=$2',[id,category+'-v2-01'])
  const masked=async()=>{for(const n of [1,2]){assert.equal((await er(n,'session',id)).card,null);assert.equal(await er(n,'card-1',id),null);assert.deepEqual((await er(n,'history',id)).items,[]);assert.ok((await asUser(n,'select * from public.connection_answers where session_id=$1',[id])).every(a=>a.user_id===uid(n)))}}
  await masked();await ec(1,'opt',id,0,{enabled:true});await masked();await ec(2,'opt',id,0,{enabled:true});await sharedReviewCard(id,1)
  assert.equal((await asUser(1,'select * from public.connection_answers where session_id=$1',[id])).length,2)
@@ -3995,4 +4016,25 @@ for(const category of ['heat','secret'])test(`review: ${category} requires both 
  await ec(1,'opt',id,0,{enabled:false});await masked()
  assert.equal((await pool.query('select count(*)::int n from public.connection_answers where session_id=$1',[id])).rows[0].n,2,'consent withdrawal preserves private own texts')
  await assert.rejects(ec(1,'opt',id,0,{enabled:true}),/connection_invalid/)
+})
+
+test('PR9 release pin: new games contain exactly 150 v2 cards and client version parameters cannot choose a legacy deck',async()=>{
+ const id=await game()
+ const versions=(await pool.query("select c.version,count(*)::int n from public.connection_deck d join public.connection_catalog c on c.id=d.card_id and c.kind='card' where d.session_id=$1 group by c.version",[id])).rows
+ assert.deepEqual(versions,[{version:2,n:150}]);assert.equal((await er(1,'session',id)).session.game_catalog_version,2)
+ await ec(1,'close',id);const next=(await ec(1,'start_game',null,1,{game_catalog_version:1})).id;await ec(2,'accept',next)
+ assert.equal((await er(1,'session',next)).session.game_catalog_version,2)
+ await assert.rejects(asUser(1,'update public.connection_sessions set game_catalog_version=1 where id=$1',[next]),/permission denied/)
+})
+test('PR9 legacy release: pinned pending invite accepts v1, v1 answers stay tied to the original wording',async()=>{
+ await epair();const id=(await ec(1,'start_game')).id
+ // Simulate a pre-upgrade pending row; the before-migration hook also tests actual upgrade data.
+ await pool.query('update public.connection_sessions set game_catalog_version=1 where id=$1',[id]);await ec(2,'accept',id);await ec(1,'draw',id,0)
+ const first=await er(1,'session',id);assert.equal(first.card.version,1);assert.ok(!first.card.id.includes('-v2-'))
+ await sharedReviewCard(id,1);const previous=JSON.stringify((await er(1,'card-1',id)).card)
+ await ec(1,'draw',id,1);assert.equal(JSON.stringify((await er(1,'history',id)).items[0].card),previous)
+ assert.equal((await er(2,'card-1',id)).answers.length,2)
+ const originals=JSON.parse(await readFile('src/features/connection/catalog.v1.json','utf8')).cards
+ const published=(await pool.query("select content from public.connection_catalog where kind='card' and version=1 order by id")).rows.map(r=>r.content)
+ assert.deepEqual(published,originals.toSorted((a,b)=>a.id.localeCompare(b.id)))
 })

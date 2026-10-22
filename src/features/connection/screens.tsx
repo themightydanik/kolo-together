@@ -1,4 +1,14 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { Send, Heart, Sparkles, MessageCircle } from 'lucide-react'
+import {
+  PageHeader,
+  SectionHeader,
+  OverflowMenu,
+  ConfirmationDialog,
+  ContextualStatus,
+  GentleOnboarding,
+  FeatureEntry,
+} from '../../components/experience'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
@@ -29,6 +39,9 @@ export function Action({
   children,
   disabled = false,
   onDone,
+  variant = 'default',
+  ariaLabel,
+  confirmationDetails,
 }: {
   action: string
   id?: string | null
@@ -37,6 +50,9 @@ export function Action({
   children: React.ReactNode
   disabled?: boolean
   onDone?: () => void
+  variant?: 'default' | 'outline' | 'ghost'
+  ariaLabel?: string
+  confirmationDetails?: string
 }) {
   const { client, session, online } = useAuth(),
     write = useConnectionWrite()
@@ -89,8 +105,10 @@ export function Action({
       }
       setMessage('Збережено.')
       onDone?.()
+      return true
     } catch (e) {
       setMessage(connectionError(e))
+      return false
     }
   }
   async function inspect() {
@@ -105,12 +123,9 @@ export function Action({
       const e = r.data as unknown as { data: unknown }
       if (e.data !== null) {
         retain(null)
-        setMessage('Запит уже виконано. Оновіть дані.')
+        setMessage('Уже збережено. Онови сторінку, щоб побачити результат.')
         onDone?.()
-      } else
-        setMessage(
-          'Запит не знайдено. Можна явно повторити те саме початкове надсилання.',
-        )
+      } else setMessage('Збереження не знайдено. Можна повторити ті самі дані.')
     } catch (e) {
       setMessage(connectionError(e))
     } finally {
@@ -119,17 +134,63 @@ export function Action({
   }
   return (
     <div className="space-y-2">
-      <Button
-        type="button"
-        disabled={disabled || write.isPending || checking || !online}
-        onClick={() => void send()}
-      >
-        {write.isPending
-          ? 'Зберігаємо…'
-          : intent
-            ? 'Повторити початковий запит'
-            : children}
-      </Button>
+      {[
+        'close',
+        'pause',
+        'erase_answers',
+        'unpublish',
+        'delete_own_history',
+      ].includes(action) ? (
+        <ConfirmationDialog
+          locale="uk"
+          trigger={
+            <Button
+              variant={variant}
+              disabled={disabled || write.isPending || !online}
+            >
+              {children}
+            </Button>
+          }
+          title={
+            action === 'pause'
+              ? 'Поставити гру на паузу?'
+              : action === 'close'
+                ? 'Завершити участь?'
+                : 'Видалити мої відповіді?'
+          }
+          description={
+            confirmationDetails ??
+            (action === 'pause'
+              ? 'Якщо відповідь ще не збережена як чернетка, повернися й збережи її перед паузою. Пауза не публікує відповідь.'
+              : action === 'close'
+                ? 'Спільний перегляд буде закрито. Власні збережені відповіді залишаться приватними; закриту сесію не можна відновити.'
+                : 'Твої відповіді буде видалено, спільний перегляд закрито. Відповіді партнера залишаться лише в його приватній історії. Це неможливо скасувати.')
+          }
+        >
+          {(close) => (
+            <Button
+              disabled={disabled || write.isPending || !online}
+              onClick={() => void send().then((done) => done && close())}
+            >
+              Підтвердити
+            </Button>
+          )}
+        </ConfirmationDialog>
+      ) : (
+        <Button
+          type="button"
+          variant={variant}
+          aria-label={ariaLabel}
+          disabled={disabled || write.isPending || checking || !online}
+          onClick={() => void send()}
+        >
+          {write.isPending
+            ? 'Зберігаємо…'
+            : intent
+              ? 'Надіслати знову без змін'
+              : children}
+        </Button>
+      )}
       {intent && !write.isPending && (
         <div className="flex flex-wrap gap-2">
           <Button
@@ -144,11 +205,11 @@ export function Action({
             onClick={() => {
               retain(null)
               setMessage(
-                'Намір очищено. Перевірте історію перед окремою новою дією.',
+                'Перед новою дією перевір історію: попередні дані могли зберегтися.',
               )
             }}
           >
-            Скасувати намір
+            Почати іншу дію
           </Button>
         </div>
       )}
@@ -167,23 +228,30 @@ export function Action({
 }
 export function ConnectionLinks() {
   return (
-    <Card lang="uk" className="space-y-3">
-      <h2 className="text-xl font-semibold">Пізнаємо одне одного</h2>
-      <p className="text-sm text-muted-foreground">
-        Добровільно, у своєму темпі. Без оцінок і винагород.
-      </p>
-      <div className="flex flex-wrap gap-3">
-        <Link to="/us/connection/mood" className="underline">
-          Наш настрій
-        </Link>
-        <Link to="/us/connection/questionnaires" className="underline">
-          Опитування для двох
-        </Link>
-        <Link to="/us/connection/game" className="underline">
-          Гра «Між нами»
-        </Link>
+    <div lang="uk" className="space-y-3">
+      <FeatureEntry
+        to="/us/connection/game"
+        icon={<Sparkles />}
+        title="Гра «Між нами»"
+        description="Одне запитання. Нова розмова."
+      />
+      <div className="surface-grid">
+        <FeatureEntry
+          to="/us/connection/questionnaires"
+          icon={<MessageCircle />}
+          title="Опитування для двох"
+          description="Побачити знайоме по-новому"
+          accent="peach"
+        />
+        <FeatureEntry
+          to="/us/connection/mood"
+          icon={<Heart />}
+          title="Наш настрій"
+          description="Помітити себе, підтримати одне одного"
+          accent="sage"
+        />
       </div>
-    </Card>
+    </div>
   )
 }
 function Feedback({
@@ -208,7 +276,6 @@ export function TodayConnection() {
   const { client } = useAuth()
   return (
     <>
-      <ConnectionLinks />
       {client ? (
         <MoodPanel compact />
       ) : (
@@ -278,7 +345,7 @@ function MoodEditor({ home }: { home: Home }) {
         <output>{values.intensity}</output>
       </label>
       <label className="block">
-        Короткий коментар
+        Кілька слів, якщо хочеться
         <textarea
           maxLength={500}
           {...register('note')}
@@ -307,8 +374,7 @@ function MoodEditor({ home }: { home: Home }) {
         Зберегти мій настрій
       </Action>
       <p className="text-xs text-muted-foreground">
-        Приватно за замовчуванням. Після зміни запису попередні реакції
-        очищуються. День визначається за UTC.
+        Запис бачиш лише ти, доки не вирішиш поділитися.
       </p>
       {home.reactions
         .filter((r) => r.owner_id === session?.user.id)
@@ -326,7 +392,7 @@ function MoodPanel({ compact = false }: { compact?: boolean }) {
   return (
     <Card lang="uk" className="space-y-4">
       <h2 className="text-xl font-semibold">Як ти сьогодні?</h2>
-      <p>Можна нічого не обирати. Тобі не потрібно пояснювати свій стан.</p>
+      <p>Знайди хвилинку для себе.</p>
       <Feedback
         pending={home.isPending}
         error={home.error}
@@ -374,11 +440,8 @@ function MoodPanel({ compact = false }: { compact?: boolean }) {
           )}
           {!compact && (
             <section>
-              <h3>Мій календар · 30 днів UTC</h3>
-              <p className="text-sm">
-                Категорії стану, без оцінки «краще/гірше» та діагнозів.
-                Інтенсивність — твій власний опис.
-              </p>
+              <h3>Мій настрій · 30 днів</h3>
+              <p className="text-sm">Твій власний погляд на останній місяць.</p>
               <div
                 className="grid grid-cols-5 gap-2 mt-3"
                 aria-label="Календар настрою"
@@ -464,16 +527,20 @@ export function PlayingCard({
   card,
   number,
   remaining,
+  initiallyBack = false,
 }: {
   card: (typeof catalog.cards)[number] | null
   number: number
   remaining: number
+  initiallyBack?: boolean
 }) {
-  const [flipped, setFlipped] = useState(false),
+  const [flipped, setFlipped] = useState(initiallyBack),
     category = catalog.categories.find((c) => c.id === card?.category)
   return (
     <div
       className="romantic-deck"
+      data-empty={remaining === 0}
+      data-category={card?.category ?? 'secret'}
       style={
         {
           '--card-color': category?.color ?? '#76618E',
@@ -481,38 +548,51 @@ export function PlayingCard({
         } as React.CSSProperties
       }
     >
-      <button
-        type="button"
-        className={'romantic-card ' + (flipped ? 'is-flipped' : '')}
-        onClick={() => setFlipped((v) => !v)}
-        aria-label={flipped ? 'Показати запитання' : 'Перевернути картку'}
-        aria-pressed={flipped}
-      >
-        <span className="romantic-face" aria-hidden={flipped}>
-          <span className="romantic-category">
-            {category?.title ?? 'Між нами'}
+      <div className={'romantic-card ' + (flipped ? 'is-flipped' : '')}>
+        <div className="romantic-card-inner">
+          <span className="romantic-face romantic-front" aria-hidden={flipped}>
+            <span className="romantic-category">
+              {category?.title ?? 'Між нами'}
+            </span>
+            <span className="romantic-symbol" aria-hidden="true">
+              {category?.symbol ?? '✧'}
+            </span>
+            <span className="romantic-question">
+              {card?.text ??
+                'Для ваших розмов, відкриттів і маленьких зізнань.'}
+            </span>
+            <span className="romantic-number">
+              {number ? String(number).padStart(3, '0') : 'KOLO'} · Між нами
+            </span>
           </span>
-          <span className="romantic-symbol" aria-hidden="true">
-            {category?.symbol ?? '✧'}
+          <span className="romantic-face romantic-back" aria-hidden={!flipped}>
+            <span className="romantic-game-name">Між нами</span>
+            <svg
+              className="card-ornament"
+              viewBox="0 0 160 150"
+              aria-hidden="true"
+            >
+              <path d="M80 135C64 116 14 91 23 52C29 24 62 18 80 46C98 18 131 24 137 52C146 91 96 116 80 135Z" />
+              <circle cx="80" cy="75" r="60" />
+              <path d="M15 75H145M80 10V140" />
+              <text x="80" y="86" textAnchor="middle">
+                {category?.symbol ?? '✧'}
+              </text>
+            </svg>
+            <strong>{category?.title ?? 'Тільки ми двоє'}</strong>
+            <span className="romantic-back-caption">
+              Ближче з кожною розмовою
+            </span>
           </span>
-          <span className="romantic-question">
-            {card?.text ??
-              'Простір для вашої розмови. Почніть, коли обоє готові.'}
-          </span>
-          <span className="romantic-number">
-            {number ? String(number).padStart(3, '0') : 'KOLO'} · Між нами
-          </span>
-        </span>
-        <span className="romantic-face romantic-back" aria-hidden={!flipped}>
-          <span aria-hidden="true">❧ · ☾ · ❧</span>
-          <strong>
-            Між
-            <br />
-            нами
-          </strong>
-          <span>Ближче. У власному темпі.</span>
-        </span>
-      </button>
+        </div>
+        <button
+          type="button"
+          className="romantic-flip-trigger"
+          aria-label={flipped ? 'Показати запитання' : 'Перевернути картку'}
+          aria-pressed={flipped}
+          onClick={() => setFlipped((v) => !v)}
+        />
+      </div>
     </div>
   )
 }
@@ -522,78 +602,69 @@ export function ConnectionHub({
   mode: 'mood' | 'questionnaires' | 'game'
 }) {
   const { client } = useAuth()
+  if (mode === 'game' && !client) return <DemoConnection />
   return (
     <div lang="uk" className="space-y-5">
-      <Link className="underline" to="/us">
-        ← Ми
-      </Link>
-      <ConnectionLinks />
-      {!client ? (
-        <DemoConnection />
-      ) : mode === 'mood' ? (
-        <MoodPanel />
-      ) : (
+      <PageHeader
+        back="/us"
+        title={
+          mode === 'mood'
+            ? 'Наш настрій'
+            : mode === 'game'
+              ? 'Між нами'
+              : 'Опитування для двох'
+        }
+        description={
+          mode === 'mood'
+            ? 'Помітити себе. Бути поруч із близькою людиною.'
+            : mode === 'game'
+              ? '150 приводів поговорити про вас.'
+              : 'Оберіть тему, яку цікаво відкрити разом.'
+        }
+      />
+      {mode === 'mood' ? (
+        client ? (
+          <MoodPanel />
+        ) : (
+          <Card>
+            <h2 className="text-lg font-semibold">Як ти сьогодні?</h2>
+            <p className="mt-3 text-3xl">☀️ 🌿 🌧️ 🌙</p>
+            <p className="text-sm text-muted-foreground mt-4">
+              У вашому просторі можна зберегти стан приватно або поділитися з
+              партнером. Тут — лише приклад.
+            </p>
+          </Card>
+        )
+      ) : client ? (
         <SessionList mode={mode} />
+      ) : (
+        <div className="surface-grid">
+          {catalog.questionnaires.map((q) => (
+            <details className="path-card" key={q.id}>
+              <summary className="font-semibold">{q.title}</summary>
+              <p className="text-sm text-muted-foreground mt-2">
+                10 запитань для розмови. Наприклад:
+              </p>
+              <p className="mt-3">{q.questions[0].text}</p>
+            </details>
+          ))}
+        </div>
       )}
     </div>
   )
 }
 function SessionList({ mode }: { mode: 'questionnaires' | 'game' }) {
   const home = useConnection<Home>('home'),
-    list = useConnectionPages<ConnectionSession>('sessions')
+    list = useConnectionPages<ConnectionSession>('sessions'),
+    items =
+      list.data?.pages
+        .flatMap((p) => p.items)
+        .filter(
+          (s) => s.kind === (mode === 'game' ? 'game' : 'questionnaire'),
+        ) ?? [],
+    live = items.find((s) => ['pending', 'active', 'paused'].includes(s.status))
   return (
     <>
-      <Card className="space-y-4">
-        <h1 className="text-2xl font-semibold">
-          {mode === 'game'
-            ? 'Гра «Між нами»'
-            : 'Опитування для самопізнання та діалогу'}
-        </h1>
-        <p>
-          Без діагностики та оцінки сумісності. Кожен може відмовитися. Жодних
-          XP чи Coins.
-        </p>
-        {mode === 'game' ? (
-          <>
-            <PlayingCard card={null} number={0} remaining={150} />
-            <p>
-              150 оригінальних запитань, п’ять категорій. Відверті категорії
-              відкриваються лише за згодою обох. Відповідь ніколи не означає
-              згоди на фізичну дію.
-            </p>
-            {!home.isError && home.data && (
-              <Action
-                action="start_game"
-                expected={home.data.game_version}
-                onDone={() => void list.refetch()}
-              >
-                Запросити до нової гри
-              </Action>
-            )}
-          </>
-        ) : (
-          catalog.questionnaires.map((q) => (
-            <section
-              key={q.id}
-              className="rounded-2xl border border-border p-4 space-y-3"
-            >
-              <h2 className="font-semibold">{q.title}</h2>
-              <p>10 авторських запитань · можна зберігати прогрес</p>
-              {!home.isError && home.data && (
-                <Action
-                  action="start_questionnaire"
-                  id={quizUuid(q.id)}
-                  expected={home.data.questionnaire_version}
-                  payload={{ catalog: q.id }}
-                  onDone={() => void list.refetch()}
-                >
-                  Запросити: {q.title}
-                </Action>
-              )}
-            </section>
-          ))
-        )}
-      </Card>
       <Feedback
         pending={list.isPending || home.isPending}
         error={list.error ?? home.error}
@@ -602,39 +673,125 @@ function SessionList({ mode }: { mode: 'questionnaires' | 'game' }) {
           void home.refetch()
         }}
       />
-      <Card className="space-y-3">
-        <h2>Ваші сесії та історія</h2>
-        {!list.isError &&
-          list.data?.pages
-            .flatMap((p) => p.items)
-            .filter(
-              (s) => s.kind === (mode === 'game' ? 'game' : 'questionnaire'),
-            )
-            .map((s) => (
-              <Link
-                className="block rounded-xl border border-border p-4"
-                to={'/us/connection/session/' + s.id}
-                key={s.id}
+      {mode === 'game' ? (
+        live ? (
+          <FeatureEntry
+            to={'/us/connection/session/' + live.id}
+            icon={<Sparkles />}
+            title={
+              live.status === 'pending'
+                ? 'Ваше запрошення'
+                : live.status === 'paused'
+                  ? 'Гра чекає на вас'
+                  : 'Продовжимо з нашої картки?'
+            }
+            description={statusText(live.status)}
+          />
+        ) : (
+          <div className="game-state">
+            <PlayingCard card={null} number={0} remaining={150} initiallyBack />
+            <h2>Ще трохи ближче</h2>
+            <p>
+              Запитання про спогади, мрії та те, що не завжди говоримо вголос.
+            </p>
+            {home.data && !home.isError && (
+              <Action
+                action="start_game"
+                expected={home.data.game_version}
+                onDone={() => void list.refetch()}
               >
+                Почати гру
+              </Action>
+            )}
+            <GentleOnboarding
+              id="game-first"
+              title="Власний темп — спільна колода"
+            >
+              Кожен може пропустити запитання. Чернетки приватні; відповіді
+              відкриються тільки після участі обох і згоди на публікацію.
+              Відверті категорії окремо дозволяють обоє.
+            </GentleOnboarding>
+          </div>
+        )
+      ) : (
+        <>
+          <GentleOnboarding
+            id="questionnaires-first"
+            title="Для самопізнання та діалогу"
+          >
+            Це авторські опитування, не клінічні тести. Спочатку відповідає
+            кожен окремо; публікація потребує окремої згоди.
+          </GentleOnboarding>
+          <div className="surface-grid">
+            {catalog.questionnaires.map((q) => (
+              <section className="path-card space-y-3" key={q.id}>
+                <MessageCircle size={21} className="text-primary" />
+                <h2 className="font-semibold">{q.title}</h2>
+                <p className="text-sm text-muted-foreground">
+                  10 запитань · можна повернутися пізніше
+                </p>
+                {home.data && !home.isError && (
+                  <Action
+                    action="start_questionnaire"
+                    id={quizUuid(q.id)}
+                    expected={home.data.questionnaire_version}
+                    payload={{ catalog: q.id }}
+                    variant="outline"
+                    onDone={() => void list.refetch()}
+                  >
+                    Запросити: {q.title}
+                  </Action>
+                )}
+              </section>
+            ))}
+          </div>
+        </>
+      )}
+      <details className="quiet-details">
+        <summary>
+          {mode === 'game' ? 'Наші ігри та спогади' : 'Наші опитування'}
+        </summary>
+        <SectionHeader
+          title={mode === 'game' ? 'Ваші розмови' : 'Вибрані теми'}
+        />
+        {!list.isError &&
+          items.map((s) => (
+            <Link
+              className="session-row"
+              to={'/us/connection/session/' + s.id}
+              key={s.id}
+            >
+              <span>
                 {s.kind === 'game'
                   ? 'Між нами'
                   : catalog.questionnaires.find((q) => q.id === s.catalog_id)
-                      ?.title}{' '}
-                · {statusText(s.status)} · {s.created_at.slice(0, 10)}
-              </Link>
-            ))}
-        {!list.isPending && !list.data?.pages.some((p) => p.items.length) && (
-          <p>Тут з’явиться ваша спільна історія. Почати необов’язково.</p>
+                      ?.title}
+                <small>{statusText(s.status)}</small>
+              </span>
+              <span>
+                {new Date(s.created_at).toLocaleDateString('uk-UA', {
+                  day: 'numeric',
+                  month: 'short',
+                })}{' '}
+                →
+              </span>
+            </Link>
+          ))}
+        {!items.length && !list.isPending && (
+          <p className="text-sm text-muted-foreground">
+            Тут збережуться ваші розмови.
+          </p>
         )}
         {list.hasNextPage && (
           <Button
+            variant="outline"
             onClick={() => void list.fetchNextPage()}
             disabled={list.isFetchingNextPage}
           >
-            Попередні сесії
+            Показати ще
           </Button>
         )}
-      </Card>
+      </details>
     </>
   )
 }
@@ -661,84 +818,157 @@ export function ConnectionDetail() {
     { client, session } = useAuth(),
     detail = useConnection<Detail>('session', connectionId ?? null)
   if (!client) return <DemoConnection />
+  const d = detail.data
   return (
     <div lang="uk" className="space-y-5">
-      <Link to="/us/connection/game" className="underline">
-        ← Пізнаємо одне одного
-      </Link>
       <Feedback
         pending={detail.isPending}
         error={detail.error}
         retry={() => void detail.refetch()}
       />
-      {!detail.isError && detail.data && (
-        <>
-          {search.get('card') && (
+      {!detail.isError &&
+        d &&
+        (search.get('card') &&
+        Number(search.get('card')) !== d.session.position ? (
+          <>
+            <PageHeader
+              title="Картка для тебе"
+              back={'/us/connection/session/' + connectionId}
+            />
             <InvitedCard id={connectionId!} slot={search.get('card')!} />
-          )}
-          <Card className="space-y-4">
-            <h1 className="text-2xl font-semibold">
-              {detail.data.session.kind === 'game'
-                ? 'Між нами'
-                : detail.data.questionnaire?.title}
-            </h1>
-            <p>{statusText(detail.data.session.status)}</p>
-            {detail.data.session.status === 'pending' && (
-              <>
-                <p>Відповіді не розкриваються без окремої згоди обох.</p>
-                {detail.data.session.b === session?.user.id && (
-                  <>
-                    <Action
-                      action="accept"
-                      id={connectionId}
-                      onDone={() => void detail.refetch()}
-                    >
+          </>
+        ) : d.session.kind === 'game' ? (
+          <Game detail={d} />
+        ) : (
+          <>
+            <PageHeader
+              title={d.questionnaire?.title ?? 'Опитування'}
+              back="/us/connection/questionnaires"
+              action={
+                <OverflowMenu locale="uk" label="Дії опитування">
+                  <Action
+                    action="close"
+                    id={connectionId}
+                    variant="ghost"
+                    confirmationDetails="Твої відповіді цього опитування буде видалено, а спільний звіт закрито. Відповіді партнера залишаться лише в його приватній історії. Це неможливо скасувати."
+                  >
+                    Завершити участь
+                  </Action>
+                </OverflowMenu>
+              }
+            />
+            <ContextualStatus>{statusText(d.session.status)}</ContextualStatus>
+            {d.session.status === 'pending' ? (
+              <Card className="space-y-4">
+                <p>
+                  Запрошення від партнера. Власні відповіді залишаться
+                  приватними до окремої згоди на спільний звіт.
+                </p>
+                {d.session.b === session?.user.id ? (
+                  <div className="flex flex-wrap gap-3">
+                    <Action action="accept" id={connectionId}>
                       Прийняти запрошення
                     </Action>
-                    <Action action="decline" id={connectionId}>
-                      Відхилити без пояснення
+                    <Action action="decline" id={connectionId} variant="ghost">
+                      Не зараз
                     </Action>
-                  </>
+                  </div>
+                ) : (
+                  <p>Чекаємо на відповідь партнера</p>
                 )}
-              </>
-            )}
-            {['active', 'paused'].includes(detail.data.session.status) && (
-              <>
-                <Action
-                  action={
-                    detail.data.session.status === 'paused' ? 'resume' : 'pause'
-                  }
-                  id={connectionId}
-                >
-                  {detail.data.session.status === 'paused'
-                    ? 'Відновити гру / проходження'
-                    : 'Зробити паузу'}
-                </Action>
-                <Action action="close" id={connectionId}>
-                  Відмовитися від подальшої участі
-                </Action>
-              </>
-            )}
-          </Card>
-          {detail.data.session.kind === 'game' ? (
-            <Game detail={detail.data} />
-          ) : (
-            detail.data.session.status !== 'pending' && (
+              </Card>
+            ) : (
               <QuestionnaireForm
                 key={
                   connectionId +
                   ':' +
-                  (detail.data.answers.find(
-                    (a) => a.user_id === session?.user.id,
-                  )?.version ?? 0)
+                  (d.answers.find((a) => a.user_id === session?.user.id)
+                    ?.version ?? 0)
                 }
-                detail={detail.data}
+                detail={d}
               />
-            )
-          )}
-        </>
-      )}
+            )}
+          </>
+        ))}
     </div>
+  )
+}
+function GameMenu({ detail }: { detail: Detail }) {
+  const s = detail.session,
+    { session } = useAuth(),
+    mine = s.a === session?.user.id ? s.opt_a : s.opt_b
+  return (
+    <OverflowMenu locale="uk" label="Налаштування гри">
+      {s.status === 'active' && (
+        <Action action="pause" id={s.id} variant="ghost">
+          Поставити на паузу
+        </Action>
+      )}
+      {s.status === 'paused' && (
+        <Action action="resume" id={s.id} variant="ghost">
+          Продовжити
+        </Action>
+      )}
+      {(['active', 'paused'].includes(s.status) || mine) && (
+        <details>
+          <summary>
+            Відверті категорії {s.opt_a && s.opt_b ? '· відкриті' : '· закриті'}
+          </summary>
+          <p>
+            «Високі температури» та «Таємне та бажане» відкриються лише за
+            окремою згодою обох. Кожне запитання можна пропустити; відповідь не
+            є згодою на фізичну дію.
+          </p>
+          {mine ? (
+            <Action
+              action="opt"
+              id={s.id}
+              payload={{ enabled: false }}
+              variant="ghost"
+            >
+              Відкликати мою згоду на відверті категорії
+            </Action>
+          ) : (
+            <ConfirmationDialog
+              locale="uk"
+              trigger={
+                <Button variant="outline">Дозволити відверті категорії</Button>
+              }
+              title="Відкрити відверті категорії?"
+              description="Це запрошення до розмови про бажання, а не до дій. Потрібна згода обох; ти можеш відкликати свою будь-коли."
+            >
+              {(close) => (
+                <Action
+                  action="opt"
+                  id={s.id}
+                  payload={{ enabled: true }}
+                  onDone={close}
+                >
+                  Я погоджуюся
+                </Action>
+              )}
+            </ConfirmationDialog>
+          )}
+        </details>
+      )}
+      {['pending', 'active', 'paused', 'completed'].includes(s.status) && (
+        <Action action="close" id={s.id} variant="ghost">
+          Завершити участь
+        </Action>
+      )}
+      <Action action="delete_own_history" id={s.id} variant="ghost">
+        Видалити мої відповіді
+      </Action>
+      <details>
+        <summary>Правила й приватність</summary>
+        <p>
+          Кожен відповідає лише за себе. Чернетка приватна; опубліковані
+          відповіді відкриваються після участі обох. Закриття відкликає спільний
+          перегляд; видалення прибирає тільки твої тексти.
+        </p>
+        <p>Уже прочитані копії дистанційно не видаляються.</p>
+      </details>
+    </OverflowMenu>
   )
 }
 export function Game({ detail }: { detail: Detail }) {
@@ -748,131 +978,197 @@ export function Game({ detail }: { detail: Detail }) {
     both =
       ['active', 'paused', 'completed'].includes(s.status) &&
       detail.answers.length === 2 &&
-      detail.answers.every((a) => a.submitted)
-  const cardAllowed =
-    !!detail.card &&
-    (!['heat', 'secret'].includes(detail.card.category) || (s.opt_a && s.opt_b))
+      detail.answers.every((a) => a.submitted),
+    cardAllowed =
+      !!detail.card &&
+      (!['heat', 'secret'].includes(detail.card.category) ||
+        (s.opt_a && s.opt_b))
+  const waiting = own?.submitted && !both
   return (
-    <>
-      <Card className="space-y-5">
-        <p>
-          Картка {s.position} із 150 · Залишилося {detail.remaining}
-        </p>
-        <PlayingCard
-          key={s.position}
-          card={cardAllowed ? detail.card : null}
-          number={s.position}
-          remaining={detail.remaining}
-        />
-        <p>
-          Можна пропустити без пояснення. Згода на відповідь не є згодою на
-          фізичні дії.
-        </p>
-        {(['active', 'paused'].includes(s.status) ||
-          (s.a === session?.user.id ? s.opt_a : s.opt_b)) && (
-          <>
-            <p>
-              Відверті категорії «Високі температури» та «Таємне та бажане»:{' '}
-              {s.opt_a && s.opt_b ? 'дозволені обома' : 'закриті до згоди обох'}
-              .
-            </p>
-            <Action
-              action="opt"
-              id={s.id}
-              payload={{
-                enabled: !(s.a === session?.user.id ? s.opt_a : s.opt_b),
-              }}
-            >
-              {(s.a === session?.user.id ? s.opt_a : s.opt_b)
-                ? 'Відкликати мою згоду на відверті категорії'
-                : 'Добровільно дозволити відверті категорії'}
-            </Action>
-          </>
-        )}
-        {s.position > 0 && (
-          <>
-            <p>
-              Твоя участь:{' '}
-              {own?.submitted
-                ? own.skipped
-                  ? 'Пропущено'
-                  : 'Відповідь надіслано'
-                : 'У власному темпі'}
-            </p>
-            <p>
-              Партнер:{' '}
-              {detail.answers.some(
-                (a) => a.user_id !== session?.user.id && a.submitted,
-              )
-                ? 'Завершив(-ла) участь'
-                : 'Ще не завершено'}
-            </p>
-            {s.status === 'active' && cardAllowed && !own?.submitted && (
-              <CardAnswer
-                key={s.id + ':' + s.position + ':' + (own?.version ?? 0)}
-                detail={detail}
-              />
-            )}
-            {s.status === 'active' && !cardAllowed && !own?.submitted && (
-              <Action
-                action="skip"
-                id={s.id}
-                expected={own?.version ?? 0}
-                payload={{ slot: String(s.position) }}
-              >
-                Пропустити закрите запитання
-              </Action>
-            )}
-            <Published detail={detail} />
-            {s.status === 'active' && (
-              <Action action="notify" id={s.id} expected={s.position}>
-                Надіслати партнеру
-              </Action>
-            )}
-            <Action action="ack" id={s.id} expected={s.position}>
-              Позначити запрошення переглянутим
-            </Action>
-          </>
-        )}
-        {s.status === 'active' && (
-          <Action
-            action="draw"
-            id={s.id}
-            expected={s.position}
-            disabled={s.position > 0 && !both}
+    <div className="game-scene" lang="uk">
+      <div className="game-toolbar">
+        <Link className="back-link" to="/us/connection/game">
+          ← Ігри
+        </Link>
+        <div className="game-title">
+          <p className="eyebrow">Час для двох</p>
+          <h1>Між нами</h1>
+        </div>
+        <div className="flex items-center gap-2">
+          <span
+            className="game-counter"
+            aria-label={`Картка ${s.position} із 150`}
           >
-            {s.position === 0
-              ? 'Витягнути першу картку'
-              : s.position === 150
-                ? 'Завершити колоду'
-                : 'Наступна картка'}
+            {s.position} / 150
+          </span>
+          <GameMenu detail={detail} />
+        </div>
+      </div>
+      {s.status === 'pending' ? (
+        <div className="game-state">
+          <PlayingCard card={null} number={0} remaining={150} initiallyBack />
+          <h2>
+            {s.b === session?.user.id
+              ? 'Є запрошення для тебе'
+              : 'Запрошення надіслано'}
+          </h2>
+          <p>
+            {s.b === session?.user.id
+              ? '150 приводів поговорити про вас. Можна пропускати будь-яке запитання.'
+              : 'Почнемо, коли партнер буде готовий.'}
+          </p>
+          {s.b === session?.user.id && (
+            <div className="flex flex-wrap justify-center gap-3">
+              <Action action="accept" id={s.id}>
+                Прийняти запрошення
+              </Action>
+              <Action action="decline" id={s.id} variant="ghost">
+                Не зараз
+              </Action>
+            </div>
+          )}
+        </div>
+      ) : s.status === 'paused' ? (
+        <div className="game-state">
+          <PlayingCard
+            card={null}
+            number={s.position}
+            remaining={detail.remaining}
+            initiallyBack
+          />
+          <h2>Гра на паузі</h2>
+          <p>Ваша картка і збережені чернетки чекатимуть тут.</p>
+          <Action action="resume" id={s.id}>
+            Продовжити
           </Action>
-        )}
-        {s.status === 'completed' && (
-          <div className="deck-complete" role="status">
-            <h2>150 запитань. Безліч нових відкриттів одне про одного</h2>
-            <p>
-              Пройдено 150 карток у п’яти категоріях. Доступних тобі відповідей:{' '}
-              {detail.answer_count}. Відповіді й пропуски залишаються в історії.
-            </p>
-            <p>{catalog.categories.map((c) => c.title).join(' · ')}</p>
-            <Link className="underline" to="/us/connection/game">
-              Почати нову гру окремим запрошенням
-            </Link>
+        </div>
+      ) : s.status === 'completed' ? (
+        <div className="game-state deck-complete">
+          <Heart size={36} aria-hidden="true" />
+          <p className="eyebrow">Це було по-вашому</p>
+          <h2>
+            150 запитань.
+            <br />
+            Безліч відкриттів.
+          </h2>
+          <p>
+            Ви подарували одне одному час. Збережіть ці розмови у вашій історії.
+          </p>
+          <p className="text-sm">
+            Доступних тобі відповідей: {detail.answer_count}
+          </p>
+          <Button asChild>
+            <a href="#game-history">Згадати наші відповіді</a>
+          </Button>
+          <Link className="text-sm underline" to="/us/connection/game">
+            Запросити до нової гри
+          </Link>
+        </div>
+      ) : ['closed', 'declined'].includes(s.status) ? (
+        <div className="game-state">
+          <Heart size={32} />
+          <h2>
+            {s.status === 'closed'
+              ? 'Цю гру завершено'
+              : 'Можливо, іншим разом'}
+          </h2>
+          <p>
+            {s.status === 'closed'
+              ? 'Твої збережені відповіді залишаються приватними.'
+              : 'Запрошення не прийнято.'}
+          </p>
+          <Button asChild>
+            <Link to="/us/connection/game">До наших ігор</Link>
+          </Button>
+        </div>
+      ) : (
+        <>
+          <div className="game-table">
+            <div className="game-card-stage">
+              <ViewReceipt id={s.id} slot={cardAllowed ? s.position : 0}>
+                <PlayingCard
+                  key={s.position}
+                  card={cardAllowed ? detail.card : null}
+                  number={s.position}
+                  remaining={detail.remaining}
+                  initiallyBack={s.position === 0}
+                />
+              </ViewReceipt>
+              <p className="game-card-hint">Натисни, щоб перевернути</p>
+            </div>
+            <div className="game-response">
+              {s.position === 0 ? (
+                <div className="game-state">
+                  <h2>Тільки ви двоє</h2>
+                  <p>Зручніше вмостіться. Першу картку відкриємо разом.</p>
+                  <Action action="draw" id={s.id} expected={0}>
+                    Витягнути першу картку
+                  </Action>
+                </div>
+              ) : (
+                <>
+                  <div className="game-partner-status">
+                    <ContextualStatus tone={both ? 'success' : 'quiet'}>
+                      {both
+                        ? 'Ви поділилися відповідями'
+                        : waiting
+                          ? 'Чекаємо на відповідь партнера'
+                          : 'Кожен відповідає у своєму темпі'}
+                    </ContextualStatus>
+                    <Action
+                      action="notify"
+                      id={s.id}
+                      expected={s.position}
+                      variant="ghost"
+                      ariaLabel="Надіслати партнеру"
+                    >
+                      <Send size={18} />
+                    </Action>
+                  </div>
+                  {!cardAllowed && !own?.submitted ? (
+                    <div className="space-y-3">
+                      <p>Ця категорія зараз закрита.</p>
+                      <Action
+                        action="skip"
+                        id={s.id}
+                        expected={own?.version ?? 0}
+                        payload={{ slot: String(s.position) }}
+                        variant="outline"
+                      >
+                        Пропустити закрите запитання
+                      </Action>
+                    </div>
+                  ) : !own?.submitted ? (
+                    <CardAnswer
+                      key={s.id + ':' + s.position + ':' + (own?.version ?? 0)}
+                      detail={detail}
+                    />
+                  ) : null}
+                  <Published detail={detail} />
+                  {both && (
+                    <Action action="draw" id={s.id} expected={s.position}>
+                      {s.position === 150
+                        ? 'Завершити колоду'
+                        : 'Наступна картка'}
+                    </Action>
+                  )}
+                </>
+              )}
+            </div>
           </div>
-        )}
-      </Card>
-      <Card>
-        <Action action="delete_own_history" id={s.id}>
-          Видалити всі мої відповіді цієї гри та завершити участь
-        </Action>
-        <p>
-          Спільний перегляд відповідей буде відкликано. Уже прочитане неможливо
-          стерти дистанційно.
-        </p>
-      </Card>
-      <GameHistory id={s.id} />
-    </>
+        </>
+      )}
+      {s.position > 0 && (
+        <details
+          id="game-history"
+          className="quiet-details"
+          open={s.status === 'completed' ? true : undefined}
+        >
+          <summary>Ваші попередні розмови</summary>
+          <GameHistory id={s.id} />
+        </details>
+      )}
+    </div>
   )
 }
 function CardAnswer({ detail }: { detail: Detail }) {
@@ -887,48 +1183,59 @@ function CardAnswer({ detail }: { detail: Detail }) {
     values = useWatch({ control }),
     s = detail.session
   return (
-    <section className="space-y-3">
-      <label className="block">
-        Моя відповідь (до 2000 символів)
+    <section className="space-y-4">
+      <label className="block text-sm font-medium">
+        Твоя відповідь
         <textarea
           maxLength={2000}
+          rows={4}
+          placeholder="Те, чим хочеться поділитися…"
           {...register('answer')}
           className="connection-input"
         />
       </label>
-      <Action
-        action="save"
-        id={s.id}
-        expected={own?.version ?? 0}
-        payload={{ slot: String(s.position), answers: values.answer }}
-      >
-        Зберегти приватний чернетковий текст
-      </Action>
-      <label className="flex gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <Action
+          action="save"
+          id={s.id}
+          expected={own?.version ?? 0}
+          payload={{ slot: String(s.position), answers: values.answer }}
+          variant="ghost"
+        >
+          Зберегти чернетку
+        </Action>
+        <small className="text-muted-foreground">
+          {values.answer?.length ?? 0} / 2000
+        </small>
+      </div>
+      <label className="consent-line">
         <input type="checkbox" {...register('publish')} />
-        Погоджуюся показати цю відповідь партнеру після завершення участі обома
+        Дозволяю показати цю відповідь партнеру після участі обох
       </label>
-      <Action
-        action="submit"
-        id={s.id}
-        expected={own?.version ?? 0}
-        payload={{
-          slot: String(s.position),
-          answers: values.answer,
-          publish: values.publish,
-        }}
-        disabled={!values.publish || !values.answer?.trim()}
-      >
-        Надіслати відповідь
-      </Action>
-      <Action
-        action="skip"
-        id={s.id}
-        expected={own?.version ?? 0}
-        payload={{ slot: String(s.position) }}
-      >
-        Пропустити запитання
-      </Action>
+      <div className="flex flex-wrap gap-3">
+        <Action
+          action="submit"
+          id={s.id}
+          expected={own?.version ?? 0}
+          payload={{
+            slot: String(s.position),
+            answers: values.answer,
+            publish: values.publish,
+          }}
+          disabled={!values.publish || !values.answer?.trim()}
+        >
+          Надіслати відповідь
+        </Action>
+        <Action
+          action="skip"
+          id={s.id}
+          expected={own?.version ?? 0}
+          payload={{ slot: String(s.position) }}
+          variant="ghost"
+        >
+          Пропустити запитання
+        </Action>
+      </div>
     </section>
   )
 }
@@ -1069,11 +1376,13 @@ export function QuestionnaireForm({ detail }: { detail: Detail }) {
         <section className="space-y-4">
           <h2 className="text-xl">Ваш тематичний профіль: {q.title}</h2>
           <p>{report.interpretation}</p>
-          <p>
-            Для шкал відстань 0–4 між відповідями описує лише цей пункт. Вибір
-            варіанта порівнюється за змістовим ключем, а не номером. Загального
-            відсотка «сумісності» немає.
-          </p>
+          <details className="quiet-details">
+            <summary>Як порівнюються відповіді</summary>
+            <p>
+              Для шкал порівнюється відстань 0–4, а для варіантів — їхній зміст.
+              Це опис уподобань, не оцінка сумісності.
+            </p>
+          </details>
           <h3>Близькі відповіді</h3>
           {report.similar.map((p) => (
             <p key={p.id}>{p.text}</p>
@@ -1168,28 +1477,107 @@ function GameHistory({ id }: { id: string }) {
 }
 export function DemoConnection() {
   return (
-    <div lang="uk" className="space-y-5">
-      <Card>
-        <h2>Демонстрація · Між нами</h2>
-        <p>
-          Приклад оформлення. Настрій, відповіді, згоди та серверна історія не
-          зберігаються.
-        </p>
-        <PlayingCard card={catalog.cards[0]} number={1} remaining={149} />
-        <p>
-          Можна перевертати картку. Для спільної гри потрібні реальні облікові
-          записи й добровільне запрошення.
-        </p>
-      </Card>
+    <div lang="uk" className="game-scene">
+      <PageHeader
+        back="/us"
+        eyebrow="Час для двох"
+        title="Між нами"
+        description="Одне запитання. Нова розмова."
+        action={
+          <OverflowMenu locale="uk" label="Про гру">
+            <p>
+              Це приклад оформлення. Для спільної колоди й приватних відповідей
+              потрібні ваші облікові записи.
+            </p>
+          </OverflowMenu>
+        }
+      />
+      <div className="game-table">
+        <div>
+          <PlayingCard card={catalog.cards[0]} number={1} remaining={149} />
+          <p className="game-card-hint">Натисни, щоб перевернути</p>
+        </div>
+        <div className="game-state">
+          <h2>А що б ти відповів(-ла)?</h2>
+          <p>
+            Спогади, маленькі зізнання, несподівані відкриття. По одній картці —
+            у вашому темпі.
+          </p>
+          <ContextualStatus>Демо · лише перегляд картки</ContextualStatus>
+          <Link className="back-link" to="/us/connection/questionnaires">
+            Або обрати тему для розмови →
+          </Link>
+        </div>
+      </div>
     </div>
   )
 }
-
+function ViewReceipt({
+  id,
+  slot,
+  children,
+}: {
+  id: string
+  slot: number
+  children?: React.ReactNode
+}) {
+  const ref = useRef<HTMLDivElement>(null),
+    seen = useRef(false),
+    home = useConnection<Home>('home'),
+    { client, session, online } = useAuth(),
+    write = useConnectionWrite()
+  const invited = home.data?.events.some(
+    (e) => e.session_id === id && e.position === slot,
+  )
+  useEffect(() => {
+    if (
+      !invited ||
+      !client ||
+      !session ||
+      !online ||
+      seen.current ||
+      !ref.current ||
+      typeof IntersectionObserver === 'undefined'
+    )
+      return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (
+          entries.some((e) => e.isIntersecting) &&
+          document.visibilityState === 'visible'
+        ) {
+          timer = setTimeout(() => {
+            if (document.visibilityState !== 'visible' || seen.current) return
+            seen.current = true
+            write.mutate({
+              action: 'ack',
+              id,
+              expected: slot,
+              payload: {},
+              request: crypto.randomUUID(),
+            })
+          }, 350)
+        } else if (timer) clearTimeout(timer)
+      },
+      { threshold: 0.65 },
+    )
+    observer.observe(ref.current)
+    return () => {
+      observer.disconnect()
+      if (timer) clearTimeout(timer)
+    }
+  }, [invited, client, session, online, id, slot, write])
+  return (
+    <div ref={ref} className="view-receipt">
+      {children}
+    </div>
+  )
+}
 function InvitedCard({ id, slot }: { id: string; slot: string }) {
   const q = useConnection<HistoryItem | null>('card-' + slot, id)
   return (
-    <Card className="space-y-4">
-      <h2>Запрошення до картки №{slot}</h2>
+    <div className="space-y-4">
       <Feedback
         pending={q.isPending}
         error={q.error}
@@ -1197,7 +1585,13 @@ function InvitedCard({ id, slot }: { id: string; slot: string }) {
       />
       {!q.isError && q.data ? (
         <>
-          <PlayingCard card={q.data.card} number={Number(slot)} remaining={0} />
+          <ViewReceipt id={id} slot={Number(slot)}>
+            <PlayingCard
+              card={q.data.card}
+              number={Number(slot)}
+              remaining={0}
+            />
+          </ViewReceipt>
           {q.data.answers?.map((a) => (
             <p className="break-words" key={a.user_id}>
               {a.skipped
@@ -1211,9 +1605,6 @@ function InvitedCard({ id, slot }: { id: string; slot: string }) {
       ) : (
         !q.isPending && <p>Картка недоступна або категорія зараз закрита.</p>
       )}
-      <Action action="ack" id={id} expected={Number(slot)}>
-        Позначити запрошення переглянутим
-      </Action>
-    </Card>
+    </div>
   )
 }

@@ -1,3 +1,8 @@
+import {
+  PageHeader,
+  CompactProgress,
+  OverflowMenu,
+} from '../../components/experience'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { Plus, Sparkles, ArrowLeft, Mountain } from 'lucide-react'
@@ -29,22 +34,14 @@ function person(data: GoalsWorkspace, id: string, me: string) {
 function Progress({ goal, data }: { goal: CoupleGoal; data: GoalsWorkspace }) {
   const progress = data.progress.find((p) => p.goal_id === goal.id)
   return (
-    <div className="space-y-2">
-      <div className="flex justify-between gap-2 text-sm">
-        <span>
-          {progress?.completed_steps ?? 0} из {progress?.total_steps ?? 0} шагов
-        </span>
-        <span>{progress?.percent ?? 0}%</span>
-      </div>
-      <progress
-        className="h-2 w-full accent-primary"
-        aria-label={`Прогресс цели ${goal.title}`}
-        max={100}
-        value={progress?.percent ?? 0}
-      />
-    </div>
+    <CompactProgress
+      value={progress?.completed_steps ?? 0}
+      total={progress?.total_steps ?? 0}
+      label="Шаги к мечте"
+    />
   )
 }
+
 function ReadError({ error, retry }: { error: unknown; retry: () => void }) {
   return (
     <Card>
@@ -80,8 +77,17 @@ export function GoalCard({
       {goal.target_date && (
         <p className="text-xs text-muted-foreground">
           Ориентир:{' '}
-          {new Date(goal.target_date + 'T00:00:00').toLocaleDateString('ru-RU')}{' '}
-          · без штрафов
+          {new Date(goal.target_date + 'T00:00:00').toLocaleDateString(
+            'ru-RU',
+          )}{' '}
+        </p>
+      )}
+      {goal.status === 'active' && (
+        <p className="text-sm text-muted-foreground">
+          Следующий шаг:{' '}
+          {data.steps.find(
+            (step) => step.goal_id === goal.id && step.status !== 'completed',
+          )?.title ?? 'Обсудить, что хочется сделать первым'}
         </p>
       )}
       <Button variant="outline" asChild>
@@ -112,14 +118,17 @@ export function GoalsScreen() {
   )
   return (
     <div className="space-y-5">
-      <Card>
-        <Mountain className="mb-3 text-primary" aria-hidden="true" />
-        <h2 className="text-lg font-semibold">Мечты, к которым идём вместе</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Небольшие согласованные шаги без гонки и штрафов. Достижение
-          подтверждаете оба — +50 Together XP на ваш общий путь.
-        </p>
-      </Card>
+      <PageHeader
+        eyebrow="Мечтать вдвоём"
+        title="Цели"
+        description="От «когда-нибудь» к маленькому шагу сегодня."
+        action={
+          <Button disabled={!hasPartner} onClick={() => setCreate(!create)}>
+            <Plus size={18} />
+            Новая цель
+          </Button>
+        }
+      />
       {!hasPartner && (
         <Card>
           <EmptyState
@@ -133,10 +142,6 @@ export function GoalsScreen() {
           </Button>
         </Card>
       )}
-      <Button disabled={!hasPartner} onClick={() => setCreate(!create)}>
-        <Plus size={18} aria-hidden="true" />
-        Новая цель
-      </Button>
       {unresolved && !create && (
         <Card>
           <GoalRecovery intent={unresolved} />
@@ -148,7 +153,7 @@ export function GoalsScreen() {
         </Card>
       )}
       <div
-        className="flex flex-wrap gap-2"
+        className="segmented-filters"
         role="group"
         aria-label="Фильтры целей"
       >
@@ -353,13 +358,15 @@ export function GoalStepCard({
         </p>
       )}
       {!done.length && step.status === 'active' && (
-        <Button
-          variant="ghost"
-          disabled={locked || !online || action.isPending}
-          onClick={edit}
-        >
-          Изменить по согласию
-        </Button>
+        <OverflowMenu label={'Действия шага: ' + step.title}>
+          <Button
+            variant="ghost"
+            disabled={locked || !online || action.isPending}
+            onClick={edit}
+          >
+            Изменить по согласию
+          </Button>
+        </OverflowMenu>
       )}
       {action.isError && <p role="alert">{errorMessage(action.error)}</p>}
     </Card>
@@ -442,8 +449,9 @@ export function GoalDetailScreen() {
         {g.target_date && (
           <p className="text-sm">
             Целевая дата:{' '}
-            {new Date(g.target_date + 'T00:00:00').toLocaleDateString('ru-RU')}{' '}
-            · без штрафов за сроки.
+            {new Date(g.target_date + 'T00:00:00').toLocaleDateString(
+              'ru-RU',
+            )}{' '}
           </p>
         )}
       </Card>
@@ -510,7 +518,7 @@ export function GoalDetailScreen() {
               edit={() => setEditing(s)}
             />
             {canChange && steps.length > 1 && (
-              <div className="flex gap-2">
+              <OverflowMenu label={'Порядок: ' + s.title}>
                 <Button
                   variant="ghost"
                   aria-label={`Поднять шаг ${s.title}`}
@@ -529,99 +537,103 @@ export function GoalDetailScreen() {
                 >
                   Ниже
                 </Button>
-              </div>
+              </OverflowMenu>
             )}
           </div>
         ))}
       </section>
       {!terminal && g.status !== 'pending' && (
-        <Card className="space-y-3">
-          <h2 className="font-semibold">Договориться о цели</h2>
-          <div className="flex flex-wrap gap-2">
-            {g.status === 'active' && (
+        <details className="quiet-details">
+          <summary>Договориться о цели</summary>
+          <Card className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {g.status === 'active' && (
+                <Button
+                  disabled={!online || !canChange || !ready || action.isPending}
+                  onClick={() =>
+                    action.mutate({
+                      kind: 'propose',
+                      goal: g.id,
+                      change: 'complete',
+                      payload: {},
+                    })
+                  }
+                >
+                  Предложить завершение
+                </Button>
+              )}
               <Button
-                disabled={!online || !canChange || !ready || action.isPending}
+                variant="outline"
+                disabled={!online || !!pending || action.isPending}
                 onClick={() =>
                   action.mutate({
                     kind: 'propose',
                     goal: g.id,
-                    change: 'complete',
+                    change: g.status === 'paused' ? 'resume' : 'pause',
                     payload: {},
                   })
                 }
               >
-                Предложить завершение
+                {g.status === 'paused'
+                  ? 'Предложить продолжить'
+                  : 'Предложить паузу'}
               </Button>
-            )}
-            <Button
-              variant="outline"
-              disabled={!online || !!pending || action.isPending}
-              onClick={() =>
-                action.mutate({
-                  kind: 'propose',
-                  goal: g.id,
-                  change: g.status === 'paused' ? 'resume' : 'pause',
-                  payload: {},
-                })
-              }
-            >
-              {g.status === 'paused'
-                ? 'Предложить продолжить'
-                : 'Предложить паузу'}
-            </Button>
-            <Button
-              variant="ghost"
-              disabled={!online || !!pending || action.isPending}
-              onClick={() =>
-                action.mutate({
-                  kind: 'propose',
-                  goal: g.id,
-                  change: 'close',
-                  payload: {},
-                })
-              }
-            >
-              Предложить закрыть
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Любое решение принимаете вдвоём. За шаги нет личных XP и Coins; за
-            достижение — один общий бонус.
-          </p>
-        </Card>
+              <Button
+                variant="ghost"
+                disabled={!online || !!pending || action.isPending}
+                onClick={() =>
+                  action.mutate({
+                    kind: 'propose',
+                    goal: g.id,
+                    change: 'close',
+                    payload: {},
+                  })
+                }
+              >
+                Предложить закрыть
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Партнёр увидит предложение и сможет принять или отклонить.
+            </p>
+          </Card>
+        </details>
       )}
       {action.isError && <p role="alert">{errorMessage(action.error)}</p>}
-      <Card>
-        <h2 className="mb-3 font-semibold">Ваш путь</h2>
-        <ol className="space-y-3">
-          {goalEvents.slice(0, history).map((e) => (
-            <li key={e.id} className="text-sm">
-              <p>
-                {e.kind === 'proposed'
-                  ? 'Предложена цель'
-                  : e.kind === 'closed_on_departure'
-                    ? 'Закрыта при выходе из пары'
-                    : e.kind === 'step_completed'
-                      ? `Отмечен шаг: ${e.details.title ?? 'Шаг'}`
-                      : e.kind === 'change_proposed'
-                        ? `Предложено: ${e.details.kind ? changeLabels[e.details.kind] : 'изменение'}`
-                        : `${e.kind === 'change_accepted' ? 'Согласовано' : e.kind === 'change_declined' ? 'Отклонено' : 'Отозвано'}: ${e.details.kind ? changeLabels[e.details.kind] : 'изменение'}`}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {e.actor_id
-                  ? person(data, e.actor_id, session!.user.id)
-                  : 'Участник'}{' '}
-                · {new Date(e.created_at).toLocaleString('ru-RU')}
-              </p>
-            </li>
-          ))}
-        </ol>
-        {goalEvents.length > history && (
-          <Button variant="ghost" onClick={() => setHistory(history + 20)}>
-            Ещё события
-          </Button>
-        )}
-      </Card>
+      <details className="quiet-details">
+        <summary>История нашей мечты</summary>
+        <Card>
+          <h2 className="mb-3 font-semibold">Ваш путь</h2>
+          <ol className="space-y-3">
+            {goalEvents.slice(0, history).map((e) => (
+              <li key={e.id} className="text-sm">
+                <p>
+                  {e.kind === 'proposed'
+                    ? 'Предложена цель'
+                    : e.kind === 'closed_on_departure'
+                      ? 'Закрыта при выходе из пары'
+                      : e.kind === 'step_completed'
+                        ? `Отмечен шаг: ${e.details.title ?? 'Шаг'}`
+                        : e.kind === 'change_proposed'
+                          ? `Предложено: ${e.details.kind ? changeLabels[e.details.kind] : 'изменение'}`
+                          : `${e.kind === 'change_accepted' ? 'Согласовано' : e.kind === 'change_declined' ? 'Отклонено' : 'Отозвано'}: ${e.details.kind ? changeLabels[e.details.kind] : 'изменение'}`}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {e.actor_id
+                    ? person(data, e.actor_id, session!.user.id)
+                    : 'Участник'}{' '}
+                  · {new Date(e.created_at).toLocaleString('ru-RU')}
+                </p>
+              </li>
+            ))}
+          </ol>
+          {goalEvents.length > history && (
+            <Button variant="ghost" onClick={() => setHistory(history + 20)}>
+              Ещё события
+            </Button>
+          )}
+        </Card>
+      </details>
       <details className="rounded-xl border border-border p-4 text-sm">
         <summary className="cursor-pointer font-medium">
           История согласований

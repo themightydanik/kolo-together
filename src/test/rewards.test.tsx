@@ -140,6 +140,14 @@ function wrapper(children: React.ReactNode, online = true, entry = '/') {
   return { ...rendered, rpc, cache }
 }
 beforeEach(() => {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
   query.mockReturnValue({ isPending: false, isError: false, data: data() })
   sessionStorage.clear()
   clearPurchaseRequest('b', 'offer')
@@ -154,6 +162,7 @@ test('store shows personal balance, incoming consent, filters and history amount
   query.mockReturnValue({ isPending: false, isError: false, data: d })
   wrapper(<RewardsScreen />)
   expect(await screen.findByText('50 Coins')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Ожидают решения' }))
   expect(
     screen.getByRole('button', { name: 'Принять предложение' }),
   ).toBeInTheDocument()
@@ -171,6 +180,7 @@ test('solo space preserves coins and waits for a partner without publishing offe
   expect(
     await screen.findByText('Ждём подключения партнёра'),
   ).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Магазин' }))
   expect(screen.getByRole('button', { name: 'Создать награду' })).toBeDisabled()
   expect(screen.getByText('50 Coins')).toBeInTheDocument()
 })
@@ -206,13 +216,9 @@ test('purchase requires confirmation, uses server price and retries same key aft
     screen.getByRole('button', { name: 'Подтвердить за 30 Coins' }),
   )
   expect(await screen.findByRole('alert')).toHaveTextContent('Нет связи')
-  expect(
-    screen.queryByText(/Покупка подтверждена сервером/),
-  ).not.toBeInTheDocument()
+  expect(screen.queryByText(/Награда выбрана/)).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Повторить безопасно' }))
-  expect(await screen.findByRole('status')).toHaveTextContent(
-    'Покупка подтверждена сервером',
-  )
+  expect(await screen.findByRole('status')).toHaveTextContent('Награда выбрана')
   expect(invalidate).toHaveBeenCalledWith({ queryKey: ['reward-store'] })
   expect(invalidate).toHaveBeenCalledWith({ queryKey: ['task-workspace'] })
   expect(w.rpc.mock.calls[0][0]).toBe('buy_reward_offer')
@@ -273,6 +279,8 @@ test('cancellation calls refund RPC without client amount; SQL errors stay priva
   fireEvent.click(
     await screen.findByRole('button', { name: 'Отменить с возвратом' }),
   )
+  expect(w.rpc).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить возврат' }))
   expect(await screen.findByRole('alert')).not.toHaveTextContent('SQL')
   expect(w.rpc).toHaveBeenCalledWith('act_reward_purchase', {
     p_purchase_id: 'purchase',
@@ -423,9 +431,7 @@ test('stale tab failure never shows success and asks to inspect refreshed histor
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'История покупок изменилась',
   )
-  expect(
-    screen.queryByText(/Покупка подтверждена сервером/),
-  ).not.toBeInTheDocument()
+  expect(screen.queryByText(/Награда выбрана/)).not.toBeInTheDocument()
 })
 test('joint purchase labels the other participant clearly and never lets them confirm receipt', async () => {
   const w = wrapper(

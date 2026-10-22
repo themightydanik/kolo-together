@@ -1,6 +1,11 @@
+import {
+  PageHeader,
+  OverflowMenu,
+  ConfirmationDialog,
+} from '../../components/experience'
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import { Coins, Gift, Plus } from 'lucide-react'
+import { Coins, Gift } from 'lucide-react'
 import { useAuth } from '../auth/auth-context'
 import { Card } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
@@ -105,17 +110,19 @@ export function RewardOfferCard({
           {offer.description}
         </p>
       )}
-      {offer.kind === 'joint' && (
-        <p className="text-sm text-muted-foreground">
-          Участвуют оба. Покупатель платит только свои Coins и подтверждает
-          получение; второй участник подтверждает готовность или отказывается с
-          возвратом.
+      <details className="quiet-details">
+        <summary>Условия награды</summary>
+        <p className="text-sm">
+          {offer.kind === 'joint'
+            ? 'Участвуют оба. Покупатель платит свои Coins и подтверждает получение; партнёр подтверждает готовность или отказывается с возвратом.'
+            : 'Предоставляет: ' + person(data, offer.creator_id, me)}
         </p>
-      )}
-      <p className="text-sm">
-        {offer.kind === 'partner' ? 'Предоставляет' : 'Предлагает'}:{' '}
-        {person(data, offer.creator_id, me)}
-      </p>
+        <p className="text-sm">
+          {offer.single_use
+            ? 'Можно выбрать один раз'
+            : 'Можно выбирать повторно'}
+        </p>
+      </details>
       <p className="font-semibold text-primary">{offer.price} Coins</p>
       <p className="text-xs text-muted-foreground">
         {sold ? 'Уже приобретена — однократная' : offerStatuses[offer.status]}
@@ -200,24 +207,27 @@ export function RewardOfferCard({
       )}
       {receipt && (
         <p role="status" className="text-sm">
-          Покупка подтверждена сервером. Откройте «История», чтобы договориться
-          об исполнении.
+          Награда выбрана. Откройте «История», чтобы договориться об исполнении.
         </p>
       )}
       {offer.creator_id === me &&
         ['active', 'paused'].includes(offer.status) && (
-          <Button
-            variant="outline"
-            disabled={!online || action.isPending}
-            onClick={() =>
-              action.mutate({
-                kind: offer.status === 'active' ? 'pause' : 'publish',
-                id: offer.id,
-              })
-            }
-          >
-            {offer.status === 'active' ? 'Снять с публикации' : 'Опубликовать'}
-          </Button>
+          <OverflowMenu label={'Действия: ' + offer.title}>
+            <Button
+              variant="outline"
+              disabled={!online || action.isPending}
+              onClick={() =>
+                action.mutate({
+                  kind: offer.status === 'active' ? 'pause' : 'publish',
+                  id: offer.id,
+                })
+              }
+            >
+              {offer.status === 'active'
+                ? 'Снять с публикации'
+                : 'Опубликовать'}
+            </Button>
+          </OverflowMenu>
         )}
       {action.isError && (
         <p role="alert" className="text-sm text-destructive">
@@ -286,15 +296,31 @@ export function PurchaseCard({
           </Button>
         )}
         {open && !buyer && (
-          <Button
-            variant="outline"
-            disabled={!online || action.isPending}
-            onClick={() =>
-              action.mutate({ kind: 'purchase', id: p.id, action: 'refuse' })
+          <ConfirmationDialog
+            trigger={
+              <Button variant="outline" disabled={!online || action.isPending}>
+                Отказаться и вернуть Coins
+              </Button>
             }
+            title="Отменить эту награду?"
+            description="Покупателю вернутся все потраченные Coins. Эту покупку нельзя будет возобновить."
           >
-            Отказаться и вернуть Coins
-          </Button>
+            {(close) => (
+              <Button
+                disabled={!online || action.isPending}
+                onClick={() => {
+                  action.mutate({
+                    kind: 'purchase',
+                    id: p.id,
+                    action: 'refuse',
+                  })
+                  close()
+                }}
+              >
+                Подтвердить возврат
+              </Button>
+            )}
+          </ConfirmationDialog>
         )}
         {buyer && p.status === 'ready' && (
           <Button
@@ -307,15 +333,31 @@ export function PurchaseCard({
           </Button>
         )}
         {buyer && open && (
-          <Button
-            variant="outline"
-            disabled={!online || action.isPending}
-            onClick={() =>
-              action.mutate({ kind: 'purchase', id: p.id, action: 'cancel' })
+          <ConfirmationDialog
+            trigger={
+              <Button variant="outline" disabled={!online || action.isPending}>
+                Отменить с возвратом
+              </Button>
             }
+            title="Отменить эту награду?"
+            description="Покупателю вернутся все потраченные Coins. Эту покупку нельзя будет возобновить."
           >
-            Отменить с возвратом
-          </Button>
+            {(close) => (
+              <Button
+                disabled={!online || action.isPending}
+                onClick={() => {
+                  action.mutate({
+                    kind: 'purchase',
+                    id: p.id,
+                    action: 'cancel',
+                  })
+                  close()
+                }}
+              >
+                Подтвердить возврат
+              </Button>
+            )}
+          </ConfirmationDialog>
         )}
       </div>
       {action.isError && (
@@ -351,11 +393,13 @@ export function RewardsScreen() {
     (o) => o.status === 'pending' && o.partner_id === me,
   )
   const offers = data.offers.filter((o) =>
-    filter === 'mine'
-      ? o.creator_id === me
-      : o.status === 'active' &&
-        (o.kind === 'joint' || o.creator_id !== me) &&
-        (filter === 'all' || o.kind === filter),
+    filter === 'pending'
+      ? o.status === 'pending' && o.partner_id !== me
+      : filter === 'mine'
+        ? o.creator_id === me
+        : o.status === 'active' &&
+          (o.kind === 'joint' || o.creator_id !== me) &&
+          (filter === 'all' || o.kind === filter),
   )
   return (
     <div className="space-y-5">
@@ -369,17 +413,33 @@ export function RewardsScreen() {
           )}
         </section>
       )}
-      <Card>
-        <Coins className="mb-2 text-primary" aria-hidden="true" />
-        <p className="text-sm">Ваш баланс</p>
-        <p className="my-2 break-words text-2xl font-semibold tabular-nums sm:text-3xl">
-          {data.summary.balance} Coins
-        </p>
-        <p className="text-xs text-muted-foreground">
-          Игровые очки, не деньги. Покупка — добровольное приглашение, не долг и
-          не гарантия исполнения.
-        </p>
-      </Card>
+      <PageHeader
+        title="Награды"
+        description="Приятное, которое хочется подарить друг другу."
+        action={
+          <OverflowMenu label="Магазин">
+            <Button disabled={!hasPartner} onClick={() => setCreate(!create)}>
+              Создать награду
+            </Button>
+            <Button variant="ghost" onClick={() => setFilter('mine')}>
+              Мои предложения
+            </Button>
+            <details>
+              <summary>Как работают Coins</summary>
+              <p>
+                Это игровые очки. При покупке списываются только ваши Coins; до
+                получения можно отменить с возвратом.
+              </p>
+            </details>
+          </OverflowMenu>
+        }
+      />
+      <div className="flex items-center justify-between">
+        <ContextBalance value={data.summary.balance} />
+        <span className="text-xs text-muted-foreground">
+          Для маленьких радостей
+        </span>
+      </div>
       {!data.couple && (
         <Card>
           <EmptyState
@@ -402,19 +462,12 @@ export function RewardsScreen() {
           </Button>
         </Card>
       )}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold">Приятное вместе</h2>
-        <Button disabled={!hasPartner} onClick={() => setCreate(!create)}>
-          <Plus size={18} aria-hidden="true" />
-          Создать награду
-        </Button>
-      </div>
       {create && hasPartner && (
         <Card>
           <RewardForm close={() => setCreate(false)} />
         </Card>
       )}
-      {incoming.length > 0 && (
+      {filter === 'pending' && incoming.length > 0 && (
         <section aria-label="Входящие предложения" className="space-y-3">
           <h2 className="font-semibold">Предложения партнёра</h2>
           {incoming.map((offer) => (
@@ -423,15 +476,13 @@ export function RewardsScreen() {
         </section>
       )}
       <div
-        className="flex flex-wrap gap-2"
+        className="segmented-filters"
         role="group"
         aria-label="Фильтры наград"
       >
         {[
           ['all', 'Все награды'],
-          ['partner', 'От партнёра'],
-          ['joint', 'Совместные'],
-          ['mine', 'Мои предложения'],
+          ['pending', 'Ожидают решения'],
           ['history', 'История'],
         ].map(([key, label]) => (
           <Button
@@ -566,5 +617,14 @@ export function DemoRewardStore() {
         </div>
       ))}
     </Card>
+  )
+}
+
+function ContextBalance({ value }: { value: number }) {
+  return (
+    <p className="context-status">
+      <Coins size={15} aria-hidden="true" />
+      <strong>{value} Coins</strong>
+    </p>
   )
 }
