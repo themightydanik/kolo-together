@@ -1,7 +1,19 @@
-import { ConnectionHub, ConnectionDetail, DemoConnection, ConnectionLinks } from './features/connection/screens'
-import { DemoRituals } from './features/rituals/screens'
-import { DemoStatistics } from './features/statistics/screens'
-import { useState } from 'react'
+import { PageHeader, GentleOnboarding } from './components/experience'
+import {
+  UsOverview,
+  UsHistory,
+  UsTraditions,
+  UsSettings,
+  DemoToday,
+  DemoGoalsExperience,
+  DemoRewardsExperience,
+} from './features/experience/screens'
+import {
+  ConnectionHub,
+  ConnectionDetail,
+  DemoConnection,
+} from './features/connection/screens'
+import { useState, useEffect } from 'react'
 import {
   BrowserRouter,
   NavLink,
@@ -19,16 +31,13 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import {
-  ArrowUpRight,
   Check,
-  CheckCheck,
   Gift,
   Heart,
   House,
   ListTodo,
   Moon,
   Plus,
-  Sparkles,
   Sun,
   Target,
   Users,
@@ -47,21 +56,12 @@ import {
 } from './features/auth/auth-screens'
 import {
   AcceptInvitationScreen,
-  CoupleScreen,
   CreateSpaceScreen,
   InvitePartnerScreen,
 } from './features/couple/screens'
-import {
-  TodayScreen,
-  TasksScreen,
-  TogetherProgress,
-} from './features/tasks/screens'
-import { RewardsScreen, DemoRewardStore } from './features/rewards/screens'
-import {
-  GoalsScreen,
-  GoalDetailScreen,
-  DemoGoals,
-} from './features/goals/screens'
+import { TodayScreen, TasksScreen } from './features/tasks/screens'
+import { RewardsScreen } from './features/rewards/screens'
+import { GoalsScreen, GoalDetailScreen } from './features/goals/screens'
 import { ProfileScreen } from './features/profile/profile-screen'
 
 const queryClient = new QueryClient({
@@ -165,78 +165,6 @@ function TaskForm({ add }: { add: (title: string) => void }) {
     </form>
   )
 }
-function Dashboard({
-  tasks,
-  toggle,
-}: {
-  tasks: Task[]
-  toggle: (id: string) => void
-}) {
-  return (
-    <div className="space-y-5">
-      <Card className="hero relative overflow-hidden border-0 p-6 sm:p-8">
-        <span className="mb-6 inline-flex items-center gap-2 rounded-full bg-white/60 px-3 py-1 text-xs font-semibold text-[#51416b]">
-          <Sparkles size={14} /> В своём ритме, вместе
-        </span>
-        <div className="relative z-10 max-w-sm">
-          <h2 className="text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
-            Ближе друг к другу.
-            <br />
-            Шаг за шагом.
-          </h2>
-          <p className="mt-3 max-w-64 text-sm leading-relaxed opacity-80">
-            Большое «мы» начинается с маленьких забот каждый день.
-          </p>
-          <Button asChild className="mt-6">
-            <NavLink to="/tasks">
-              Выбрать доброе дело <ArrowUpRight size={16} />
-            </NavLink>
-          </Button>
-        </div>
-        <Heart
-          className="absolute -right-5 bottom-5 size-40 rotate-12 text-[#bda5dd]/40 sm:right-8"
-          strokeWidth={1}
-          aria-hidden="true"
-        />
-      </Card>
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          ['XP', 'Личный рост'],
-          ['Coins', 'Будущие награды'],
-          ['Together XP', 'Общий путь'],
-        ].map(([title, subtitle]) => (
-          <Card key={title} className="p-3 sm:p-4">
-            <Sparkles
-              className="mb-3 text-primary"
-              size={18}
-              aria-hidden="true"
-            />
-            <p className="text-sm font-semibold">{title}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
-            <p
-              className="mt-3 text-lg font-semibold"
-              aria-label="Нет реального баланса"
-            >
-              —
-            </p>
-          </Card>
-        ))}
-      </div>
-      <Card>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="font-semibold">Маленькие дела на сегодня</h2>
-          <span className="rounded-full bg-muted px-2 py-1 text-xs">
-            {tasks.filter((t) => t.done).length}/{tasks.length}
-          </span>
-        </div>
-        <TaskList tasks={tasks} toggle={toggle} />
-      </Card>
-      <p className="flex items-center justify-center gap-2 py-2 text-sm text-muted-foreground">
-        <Heart size={15} aria-hidden="true" /> Здесь вы в одной команде
-      </p>
-    </div>
-  )
-}
 function DemoWorkspace() {
   const query = useQuery({ queryKey: ['demo-tasks'], queryFn: loadDemoTasks })
   const tasks = query.data ?? []
@@ -260,60 +188,43 @@ function DemoWorkspace() {
     )
   return (
     <Routes>
-      <Route
-        path="/"
-        element={
-          <>
-            <Dashboard tasks={tasks} toggle={toggle} />
-            <DemoRituals /><ConnectionLinks />
-          </>
-        }
-      />
+      <Route path="/" element={<DemoToday />} />
       <Route
         path="/tasks"
         element={
-          <Card>
-            <h2 className="font-semibold">Забота в простых действиях</h2>
-            <TaskList tasks={tasks} toggle={toggle} />
-            <TaskForm add={add} />
-          </Card>
-        }
-      />
-      <Route path="/goals" element={<DemoGoals />} />
-      <Route path="/rewards" element={<DemoRewardStore />} />
-      <Route
-        path="/us"
-        element={
           <div className="space-y-5">
-            <DemoStatistics />
-            <DemoRituals /><ConnectionLinks />
+            <PageHeader title="Дела" description="Забота в простых действиях" />
+            <GentleOnboarding
+              id="demo-tasks"
+              title="Попробуйте одно небольшое дело"
+            >
+              Эти примеры меняются только на этом устройстве до перезагрузки.
+            </GentleOnboarding>
             <Card>
-              <div className="mb-5 flex gap-2">
-                <span className="avatar">А</span>
-                <span className="avatar">Б</span>
-              </div>
-              <h2 className="text-xl font-semibold">
-                Два человека. Одна команда.
-              </h2>
-              <p className="mt-3 text-muted-foreground">
-                У обоих равные права. Поддержка важнее контроля, а общий
-                прогресс важнее сравнения.
-              </p>
-              <div className="mt-6 rounded-2xl bg-muted p-4 text-sm">
-                <CheckCheck className="mb-2 text-primary" />
-                <p>
-                  Автоматическое подтверждение дел по умолчанию. Другие правила
-                  — только по взаимному согласию.
-                </p>
-              </div>
-              <p className="mt-4 text-xs text-muted-foreground">
-                Демо-профили · приглашения и авторизация ещё не подключены.
-              </p>
+              <TaskList tasks={tasks} toggle={toggle} />
+              <details className="quiet-details">
+                <summary>Добавить своё дело</summary>
+                <TaskForm add={add} />
+              </details>
             </Card>
           </div>
         }
       />
-      <Route path="/us/connection/:section" element={<DemoConnection />} />
+      <Route path="/goals" element={<DemoGoalsExperience />} />
+      <Route path="/rewards" element={<DemoRewardsExperience />} />
+      <Route path="/us" element={<UsOverview />} />
+      <Route path="/us/history" element={<UsHistory />} />
+      <Route path="/us/traditions" element={<UsTraditions />} />
+      <Route path="/us/settings" element={<UsSettings />} />
+      <Route path="/us/connection/game" element={<DemoConnection />} />
+      <Route
+        path="/us/connection/mood"
+        element={<ConnectionHub mode="mood" />}
+      />
+      <Route
+        path="/us/connection/questionnaires"
+        element={<ConnectionHub mode="questionnaires" />}
+      />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
@@ -332,19 +243,26 @@ function RealWorkspace() {
         <Route path="/goals" element={<GoalsScreen />} />
         <Route path="/goals/:goalId" element={<GoalDetailScreen />} />
         <Route path="/rewards" element={<RewardsScreen />} />
+        <Route path="/us" element={<UsOverview />} />
+        <Route path="/us/history" element={<UsHistory />} />
+        <Route path="/us/traditions" element={<UsTraditions />} />
+        <Route path="/us/settings" element={<UsSettings />} />
         <Route
-          path="/us"
-          element={
-            <div className="space-y-5">
-              <TogetherProgress />
-              <CoupleScreen />
-            </div>
-          }
+          path="/us/connection/mood"
+          element={<ConnectionHub mode="mood" />}
         />
-        <Route path="/us/connection/mood" element={<ConnectionHub mode="mood" />} />
-        <Route path="/us/connection/questionnaires" element={<ConnectionHub mode="questionnaires" />} />
-        <Route path="/us/connection/game" element={<ConnectionHub mode="game" />} />
-        <Route path="/us/connection/session/:connectionId" element={<ConnectionDetail />} />
+        <Route
+          path="/us/connection/questionnaires"
+          element={<ConnectionHub mode="questionnaires" />}
+        />
+        <Route
+          path="/us/connection/game"
+          element={<ConnectionHub mode="game" />}
+        />
+        <Route
+          path="/us/connection/session/:connectionId"
+          element={<ConnectionDetail />}
+        />
         <Route path="/profile" element={<ProfileScreen />} />
         <Route path="/space/create" element={<CreateSpaceScreen />} />
         <Route path="/space/invite" element={<InvitePartnerScreen />} />
@@ -367,6 +285,10 @@ function initialTheme(): boolean {
 function Shell() {
   const { client, session, online } = useAuth()
   const [dark, setDark] = useState(initialTheme)
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', dark)
+    return () => document.documentElement.classList.remove('dark')
+  }, [dark])
   const location = useLocation()
   const extraTitles: Record<string, string> = {
     '/auth/login': 'Вход',
@@ -402,8 +324,8 @@ function Shell() {
       >
         К содержимому
       </a>
-      <div className="mx-auto max-w-3xl px-4 pb-28 pt-6 sm:px-8 sm:pt-10">
-        <header className="mb-8 flex items-center justify-between">
+      <div className="mx-auto max-w-5xl px-4 pb-28 pt-6 sm:px-8 sm:pt-10">
+        <header className="mb-7 flex items-center justify-between">
           <NavLink
             to="/"
             className="flex items-center gap-2 font-semibold tracking-tight"
@@ -414,21 +336,27 @@ function Shell() {
             KOLO{' '}
             <span className="font-normal text-muted-foreground">Together</span>
           </NavLink>
-          <Button
-            variant="ghost"
-            onClick={changeTheme}
-            aria-label={dark ? 'Включить светлую тему' : 'Включить тёмную тему'}
-          >
-            {dark ? <Sun size={20} /> : <Moon size={20} />}
-          </Button>
+          <div className="flex items-center gap-1">
+            {client && session && <LinkToProfile />}
+            <Button
+              variant="ghost"
+              onClick={changeTheme}
+              aria-label={
+                dark ? 'Включить светлую тему' : 'Включить тёмную тему'
+              }
+            >
+              {dark ? <Sun size={20} /> : <Moon size={20} />}
+            </Button>
+          </div>
         </header>
         <main id="main">
-          <div className="mb-5">
-            <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-primary">
-              Наше маленькое пространство
-            </p>
-            <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-          </div>
+          {location.pathname !== '/' &&
+            !['/tasks', '/goals', '/rewards', '/us'].includes(
+              location.pathname,
+            ) &&
+            !location.pathname.startsWith('/us/') && (
+              <PageHeader title={title} />
+            )}
           {!online && (
             <p
               role="status"
@@ -439,11 +367,19 @@ function Shell() {
           )}
           {!client && (
             <aside className="mb-5 rounded-xl border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
-              Деморежим · изменения хранятся только в памяти. Supabase не
-              подключён. Пользовательская сессия не создаётся.
+              Демо · знакомство с KOLO Together.{' '}
+              <details className="inline">
+                <summary className="inline min-h-0 p-0 underline">
+                  Что это значит?
+                </summary>
+                <p>
+                  Здесь нет аккаунтов и покупок. Изменения примеров дел остаются
+                  только в памяти этой страницы.
+                </p>
+              </details>
             </aside>
           )}
-          {client && session && <LinkToProfile />}
+
           {client ? <RealWorkspace /> : <DemoWorkspace />}
         </main>
       </div>
@@ -451,7 +387,7 @@ function Shell() {
         aria-label="Основная навигация"
         className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-card/95 backdrop-blur-md"
       >
-        <div className="mx-auto flex max-w-3xl justify-around px-2 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-2">
+        <div className="mx-auto flex max-w-5xl justify-around px-2 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-2">
           {navigation.map(({ path, title, icon: Icon }) => (
             <NavLink
               key={path}
@@ -472,8 +408,12 @@ function Shell() {
 }
 function LinkToProfile() {
   return (
-    <NavLink to="/profile" className="mb-4 inline-block text-sm text-primary">
-      Мой профиль
+    <NavLink
+      to="/profile"
+      aria-label="Мой профиль"
+      className="icon-button flex items-center justify-center rounded-xl text-primary"
+    >
+      <Users size={20} aria-hidden="true" />
     </NavLink>
   )
 }

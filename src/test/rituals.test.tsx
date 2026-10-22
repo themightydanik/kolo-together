@@ -408,7 +408,7 @@ test('Today block uses the server period, no sixth tab, and solo waiting has no 
   ).toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'Управлять' })).toHaveAttribute(
     'href',
-    '/us#rituals',
+    '/us/traditions',
   )
   expect(auth.client.rpc).toHaveBeenCalledWith('list_couple_rituals', {
     p_filter: 'today',

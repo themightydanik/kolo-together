@@ -14,10 +14,11 @@
     "test:unit": "vitest run",
     "test:db": "node scripts/test-database.mjs",
     "test:supabase": "node scripts/test-supabase.mjs",
-    "test:ritual-browser": "node scripts/test-ritual-browser.mjs",
+    "test:ritual-browser": "playwright test --grep \"ritual demo\"",
     "check:connection-catalog": "node scripts/check-connection-catalog.mjs",
-    "test:connection-browser": "node scripts/test-connection-browser.mjs",
-    "test:connection-accounts": "node scripts/test-connection-accounts.mjs"
+    "test:connection-browser": "playwright test",
+    "test:connection-accounts": "node scripts/test-connection-accounts.mjs",
+    "test:browser": "playwright test"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.2",
@@ -37,6 +38,8 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.1",
+    "@playwright/test": "^1.64.1",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@types/node": "^24.19.2",

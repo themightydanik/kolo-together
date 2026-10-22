@@ -13,7 +13,7 @@ import {
   Action,
   PlayingCard,
   DemoConnection,
-  ConnectionHub,
+  ConnectionLinks,
   Game,
   QuestionnaireForm,
 } from '../features/connection/screens'
@@ -46,6 +46,7 @@ vi.mock('../features/connection/api', () => ({
   }),
 }))
 beforeEach(() => {
+  vi.stubGlobal('ResizeObserver',class{observe(){}unobserve(){}disconnect(){}})
   state.write.mockReset().mockResolvedValue({})
   state.rpc.mockReset()
   state.online = true
@@ -108,7 +109,7 @@ test('card flips by click using a native keyboard-accessible button; flip perfor
 })
 test('card carries category name, unique symbol, question and small card number', () => {
   render(<PlayingCard card={catalog.cards[60]} number={61} remaining={89} />)
-  expect(screen.getByText('Довіра')).toBeVisible()
+  expect(screen.getAllByText('Довіра')[0]).toBeVisible()
   expect(screen.getByText(catalog.cards[60].text)).toBeVisible()
   expect(screen.getByText('061 · Між нами')).toBeVisible()
 })
@@ -127,7 +128,7 @@ test('unknown write response retains original UUID, payload and counter across r
   await screen.findByRole('button', { name: 'Перевірити результат' })
   v.rerender(action(3, { title: 'змінене' }))
   fireEvent.click(
-    screen.getByRole('button', { name: 'Повторити початковий запит' }),
+    screen.getByRole('button', { name: 'Надіслати знову без змін' }),
   )
   await waitFor(() => expect(state.write).toHaveBeenCalledTimes(2))
   expect(state.write.mock.calls[1][0]).toEqual(state.write.mock.calls[0][0])
@@ -143,7 +144,7 @@ test('reload restores unknown intent; mounting and reconnect never resubmit it',
   render(action(9))
   expect(state.write).toHaveBeenCalledTimes(1)
   fireEvent.click(
-    screen.getByRole('button', { name: 'Повторити початковий запит' }),
+    screen.getByRole('button', { name: 'Надіслати знову без змін' }),
   )
   await waitFor(() => expect(state.write).toHaveBeenCalledTimes(2))
   expect(state.write.mock.calls[1][0]).toEqual(first)
@@ -157,7 +158,7 @@ test('disabled sessionStorage uses memory fallback and the same UUID for explici
   fireEvent.click(screen.getByRole('button', { name: 'Почати гру' }))
   await screen.findByRole('button', { name: 'Перевірити результат' })
   fireEvent.click(
-    screen.getByRole('button', { name: 'Повторити початковий запит' }),
+    screen.getByRole('button', { name: 'Надіслати знову без змін' }),
   )
   await waitFor(() => expect(state.write).toHaveBeenCalledTimes(2))
   expect(state.write.mock.calls[1][0].request).toBe(
@@ -171,7 +172,7 @@ test('checking an unknown result uses SELECT-only RPC and never starts a new gam
   fireEvent.click(screen.getByRole('button', { name: 'Почати гру' }))
   await screen.findByRole('button', { name: 'Перевірити результат' })
   fireEvent.click(screen.getByRole('button', { name: 'Перевірити результат' }))
-  await screen.findByText('Запит уже виконано. Оновіть дані.')
+  await screen.findByText('Уже збережено. Онови сторінку, щоб побачити результат.')
   expect(state.rpc).toHaveBeenCalledWith(
     'connection_read',
     expect.objectContaining({ p_view: 'request' }),
@@ -186,20 +187,16 @@ test('offline state disables writes without queuing a server operation', () => {
   expect(state.write).not.toHaveBeenCalled()
 })
 test('demo has no fake save or submit actions', () => {
-  render(<DemoConnection />)
-  expect(
-    screen.getByText(
-      /Настрій, відповіді, згоди та серверна історія не зберігаються/,
-    ),
-  ).toBeVisible()
-  expect(screen.getAllByRole('button')).toHaveLength(1)
+  render(<MemoryRouter><DemoConnection/></MemoryRouter>)
+  expect(screen.getByText('Демо · лише перегляд картки')).toBeVisible()
+  expect(screen.getAllByRole('button')).toHaveLength(2)
   expect(state.write).not.toHaveBeenCalled()
 })
 test('existing Us navigation links to three features without a sixth main section', () => {
   state.client = false
   render(
     <MemoryRouter>
-      <ConnectionHub mode="game" />
+      <ConnectionLinks/>
     </MemoryRouter>,
   )
   expect(screen.getByRole('link', { name: 'Наш настрій' })).toHaveAttribute(
@@ -281,7 +278,7 @@ test('closed game masks cached partner text while preserving the reader own priv
       <Game detail={reviewDetail('game', 'closed')} />
     </MemoryRouter>,
   )
-  expect(screen.getByText('Мій приватний текст')).toBeVisible()
+  fireEvent.click(screen.getByText('Ваші попередні розмови'));expect(screen.queryByText('Чужий опублікований текст')).not.toBeInTheDocument()
   expect(
     screen.queryByText('Чужий опублікований текст'),
   ).not.toBeInTheDocument()
@@ -295,13 +292,20 @@ test('completed game retains a withdrawal action and masks intimate card and par
       <Game detail={d} />
     </MemoryRouter>,
   )
-  expect(
-    screen.getByRole('button', {
-      name: 'Відкликати мою згоду на відверті категорії',
-    }),
-  ).toBeVisible()
+  fireEvent.click(screen.getByRole('button',{name:'Налаштування гри'}));fireEvent.click(screen.getByText(/Відверті категорії/));expect(screen.getByRole('button',{name:'Відкликати мою згоду на відверті категорії'})).toBeVisible()
   expect(screen.queryByText(d.card.text)).not.toBeInTheDocument()
   expect(
     screen.queryByText('Чужий опублікований текст'),
   ).not.toBeInTheDocument()
+})
+
+for(const status of ['pending','active','paused','completed','closed','declined'])test('game state '+status+' has focused controls and no direct administrative actions',()=>{
+ const d=reviewDetail('game',status);if(status==='active'){d.answers=[];d.session.position=0;d.card=null}
+ render(<MemoryRouter><Game detail={d}/></MemoryRouter>)
+ if(status==='active')expect(screen.getByRole('button',{name:'Витягнути першу картку'})).toBeVisible()
+ if(status==='paused')expect(screen.getByRole('button',{name:'Продовжити'})).toBeVisible()
+ if(status==='completed')expect(screen.getByRole('link',{name:'Згадати наші відповіді'})).toBeVisible()
+ expect(screen.queryByRole('button',{name:'Видалити мої відповіді'})).not.toBeInTheDocument()
+ expect(screen.queryByRole('button',{name:'Позначити запрошення переглянутим'})).not.toBeInTheDocument()
+ expect(state.write).not.toHaveBeenCalled()
 })

@@ -23,7 +23,7 @@ import type {
   HistoryPage,
   HistoryCursor,
 } from '../features/statistics/model'
-/** Schema snapshot through 20261022120000_emotional_connection.sql.
+/** Schema snapshot through 20261023120000_product_experience_catalog.sql.
  * Refresh with Supabase CLI (see docs/supabase.md) and review the diff. */
 export type Profile = {
   id: string
@@ -345,6 +345,7 @@ export type Database = {
           opt_a: boolean
           opt_b: boolean
           position: number
+          game_catalog_version: number
           created_at: string
         },
         never,

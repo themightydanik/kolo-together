@@ -61,3 +61,11 @@ SDK намеренно не установлены. После выбора iOS/
 У «Сегодня» — необов’язковий український check-in, у «Мы» — «Пізнаємо одне одного»: власний настрій, вісім авторських опитувань і спільна гра «Між нами» на 150 запитань. П’ять основних вкладок збережено. Без XP/Coins, діагностики чи зовнішнього AI. Чернетки приватні, розкриття потребує явної згоди й завершення обома. Без Supabase — лише read-only оформлення.
 
 Документація: [настрій](docs/emotional-checkin.md), [опитування](docs/couple-questionnaires.md), [гра, RPC, приватність і розгортання](docs/between-us-card-game.md). Нова pending-міграція: `supabase/migrations/20261022120000_emotional_connection.sql`; автоматично remote не застосовується. `npm run check:connection-catalog` перевіряє JSON/SQL seed; опційні локальні Chromium checks: `npm run test:connection-browser` і `npm run test:connection-accounts -- /tmp/OWN-local-status.json http://127.0.0.1:4174` (інструкції в документації гри).
+
+## Product Experience / PR #9
+
+[UX-аудит и скриншоты до/после](docs/ux-audit.md) · [продуктовая логика](docs/product-experience.md) · [редакторская проверка всех 150 карточек](docs/card-editorial-review.md).
+
+Пять вкладок сохранены; история, традиции и настройки доступны внутри «Мы». Новая pending SQL-миграция `20261023120000_product_experience_catalog.sql` добавляет выпуск карточек 2, сохраняя старые игры на 1. Удалённо не применяется автоматически. Дополнительных переменных окружения нет.
+
+Для browser tests: собрать демо (`npm run build` без VITE Supabase), запустить preview на 4173 и `npm run test:browser`. Нужны Chromium (`CHROMIUM_BIN`, по умолчанию `/usr/bin/chromium`) и установленный Playwright WebKit (`npx playwright install --with-deps webkit`). Suite включает pixel snapshots, маршруты, темы/размеры и Axe. Обновлять snapshots только после визуального просмотра обеих сторон карты в обоих движках.

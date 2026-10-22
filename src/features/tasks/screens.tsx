@@ -1,3 +1,11 @@
+import {
+  PageHeader,
+  SectionHeader,
+  PrimaryAction,
+  OverflowMenu,
+  ConfirmationDialog,
+} from '../../components/experience'
+import { TodayFocus } from '../experience/screens'
 import { TodayConnection } from '../connection/screens'
 import { TodayRituals } from '../rituals/screens'
 import { useState } from 'react'
@@ -71,7 +79,7 @@ export function TaskCard({
 }) {
   const { session, online } = useAuth()
   const action = useTaskAction()
-  const [confirmCancel, setConfirmCancel] = useState(false)
+  const [, setConfirmCancel] = useState(false)
   const instance = given ?? currentInstance(task, data)
   const participants = data.participants.filter((p) => p.task_id === task.id)
   const me = participants.find((p) => p.user_id === session!.user.id)
@@ -111,26 +119,18 @@ export function TaskCard({
       <h3 className="text-lg font-semibold [overflow-wrap:anywhere]">
         {task.title}
       </h3>
-      {task.description && (
-        <p className="whitespace-pre-wrap [overflow-wrap:anywhere] text-sm text-muted-foreground">
-          {task.description}
-        </p>
-      )}
-      <p className="text-sm">
-        {difficulties[task.difficulty]} · {currentReward?.xp ?? '—'} XP ·{' '}
-        {currentReward?.coins ?? '—'} Coins
-      </p>
       <p className="text-xs text-muted-foreground">
-        {repetitions[task.recurrence]} ·{' '}
-        {task.due_date ? `Дата: ${task.due_date}` : 'Без срока'}
-        {instance && task.recurrence !== 'once'
-          ? ` · Период с ${instance.period_start}`
-          : ''}{' '}
-        · UTC
+        {task.kind === 'joint'
+          ? 'Для вас двоих'
+          : task.kind === 'personal'
+            ? 'Для себя'
+            : task.creator_id === session!.user.id
+              ? 'Партнёру'
+              : 'Вам от партнёра'}
       </p>
       {task.kind === 'joint' && (
         <p
-          className="text-sm font-semibold"
+          className="text-sm"
           aria-label={`Совместный прогресс ${completed.length} из 2`}
         >
           {completed.length}/2 выполнено · +
@@ -138,10 +138,27 @@ export function TaskCard({
           обоих
         </p>
       )}
+      <details className="quiet-details">
+        <summary>Детали дела</summary>
+        {task.description && (
+          <p className="whitespace-pre-wrap text-sm">{task.description}</p>
+        )}
+        <p className="text-sm">
+          {difficulties[task.difficulty]} · {currentReward?.xp ?? '—'} XP ·{' '}
+          {currentReward?.coins ?? '—'} Coins
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {repetitions[task.recurrence]} ·{' '}
+          {task.due_date ? `Дата: ${task.due_date}` : 'Без срока'}
+          {instance && task.recurrence !== 'once'
+            ? ` · Период с ${instance.period_start}`
+            : ''}
+        </p>
+      </details>
       {ownDone && (
         <p className="flex items-center gap-2 text-sm text-primary">
           <Check size={16} aria-hidden="true" />
-          Ваше выполнение учтено сервером
+          Готово с вашей стороны
         </p>
       )}
       {!history &&
@@ -180,36 +197,28 @@ export function TaskCard({
           Начнётся {task.anchor_date} по UTC. До этой даты награды недоступны.
         </p>
       )}
-      {cancellable &&
-        (confirmCancel ? (
-          <div className="space-y-2">
-            <p className="text-sm">
-              Отменить дело? Начисленные ранее награды останутся в истории.
-            </p>
-            <Button
-              variant="outline"
-              disabled={action.isPending || !online}
-              onClick={() => action.mutate({ kind: 'cancel', id: task.id })}
-            >
-              Подтвердить отмену
-            </Button>
-            <Button
-              variant="ghost"
-              disabled={action.isPending}
-              onClick={() => setConfirmCancel(false)}
-            >
-              Сохранить дело
-            </Button>
-          </div>
-        ) : (
-          <Button
-            variant="ghost"
-            disabled={action.isPending}
-            onClick={() => setConfirmCancel(true)}
+      {cancellable && (
+        <OverflowMenu label={'Действия: ' + task.title}>
+          <ConfirmationDialog
+            trigger={<Button variant="ghost">Отменить дело</Button>}
+            title="Отменить дело?"
+            description="Оно перестанет ждать выполнения. Уже заработанный прогресс сохранится."
           >
-            Отменить дело
-          </Button>
-        ))}
+            {(close) => (
+              <Button
+                disabled={action.isPending || !online}
+                onClick={() => {
+                  action.mutate({ kind: 'cancel', id: task.id })
+                  setConfirmCancel(false)
+                  close()
+                }}
+              >
+                Подтвердить отмену
+              </Button>
+            )}
+          </ConfirmationDialog>
+        </OverflowMenu>
+      )}
       {action.isError && (
         <p role="alert" className="text-sm text-destructive">
           {errorMessage(action.error)}
@@ -281,15 +290,19 @@ export function TasksScreen() {
           )}
         </section>
       )}
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
-          Забота без обязательств и штрафов
-        </p>
-        <Button onClick={() => setCreating((v) => !v)} aria-expanded={creating}>
-          <Plus size={18} aria-hidden="true" />
-          {creating ? 'Закрыть' : 'Новое дело'}
-        </Button>
-      </div>
+      <PageHeader
+        title="Дела"
+        description="Маленькие действия, в которых чувствуется забота."
+        action={
+          <PrimaryAction
+            onClick={() => setCreating((v) => !v)}
+            aria-expanded={creating}
+          >
+            <Plus size={18} aria-hidden="true" />
+            {creating ? 'Закрыть' : 'Новое дело'}
+          </PrimaryAction>
+        }
+      />
       {!data.hasPartner && (
         <p className="rounded-xl bg-muted p-3 text-sm">
           Партнёр пока не подключён. Личные задания доступны; совместные дела
@@ -302,7 +315,7 @@ export function TasksScreen() {
         </Card>
       )}
       <div
-        className="flex gap-2 overflow-x-auto pb-1"
+        className="segmented-filters"
         role="group"
         aria-label="Фильтры заданий"
       >
@@ -364,36 +377,39 @@ export function TasksScreen() {
           Показать ещё
         </Button>
       )}
-      <Card>
-        <h2 className="font-semibold">История ваших выполнений</h2>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Последние 20 начислений; списаний нет. Coins не являются деньгами.
-        </p>
-        {data.ledger.filter((l) => l.kind === 'personal').length ? (
-          <ul className="mt-3 space-y-3">
-            {data.ledger
-              .filter((l) => l.kind === 'personal')
-              .map((l) => (
-                <li key={l.id} className="text-sm">
-                  <p className="font-semibold [overflow-wrap:anywhere]">
-                    {l.title}
-                  </p>
-                  <p className="text-muted-foreground">
-                    +{l.xp} XP · +{l.coins} Coins ·{' '}
-                    {new Date(l.created_at).toLocaleString('ru-RU', {
-                      timeZone: 'UTC',
-                    })}{' '}
-                    UTC
-                  </p>
-                </li>
-              ))}
-          </ul>
-        ) : (
-          <p className="mt-3 text-sm text-muted-foreground">
-            Пока нет начислений.
+      <details className="quiet-details">
+        <summary>Мой прогресс и история</summary>
+        <Card>
+          <h2 className="font-semibold">История ваших выполнений</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Последние 20 начислений; списаний нет. Coins не являются деньгами.
           </p>
-        )}
-      </Card>
+          {data.ledger.filter((l) => l.kind === 'personal').length ? (
+            <ul className="mt-3 space-y-3">
+              {data.ledger
+                .filter((l) => l.kind === 'personal')
+                .map((l) => (
+                  <li key={l.id} className="text-sm">
+                    <p className="font-semibold [overflow-wrap:anywhere]">
+                      {l.title}
+                    </p>
+                    <p className="text-muted-foreground">
+                      +{l.xp} XP · +{l.coins} Coins ·{' '}
+                      {new Date(l.created_at).toLocaleString('ru-RU', {
+                        timeZone: 'UTC',
+                      })}{' '}
+                      UTC
+                    </p>
+                  </li>
+                ))}
+            </ul>
+          ) : (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Пока нет начислений.
+            </p>
+          )}
+        </Card>
+      </details>
       {past.length > 0 && (
         <Card>
           <h2 className="font-semibold">Отклонённые и отменённые</h2>
@@ -443,72 +459,82 @@ export function TodayScreen() {
       currentInstance(t, data)?.status === 'active',
   )
   return (
-    <div className="space-y-5">
-      <Card className="hero">
-        <p className="text-sm">
-          Рады видеть вас
-          {data.profile.display_name ? `, ${data.profile.display_name}` : ''}
-        </p>
-        <h2 className="mt-3 text-3xl font-semibold">
-          Маленькая забота.
-          <br />
-          Большое «мы».
-        </h2>
-        <p className="mt-3 text-sm">
-          Ваш день: {data.today} · календарь UTC. Без спешки и сравнения.
-        </p>
-      </Card>
-      <ProgressCards data={data} />
-      <TodayRituals /><TodayConnection />
-      {!data.spaceId && <CoupleStatus />}
-      <div className="flex items-center justify-between">
-        <h2 className="font-semibold">Дела на сегодня</h2>
-        <Link to="/tasks" className="text-sm text-primary">
-          Все дела
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow={
+          data.profile.display_name
+            ? `Рады видеть, ${data.profile.display_name}`
+            : 'Наш день'
+        }
+        title="Сегодня"
+        description="Что хорошего мы можем сделать друг для друга?"
+      />
+      <TodayFocus pending={pending.length} hasPartner={data.hasPartner} />
+      <div className="today-progress">
+        <span>Наш общий путь</span>
+        <strong>{data.spaceId ? data.togetherXp : '—'} Together XP</strong>
+        <Link to="/us/history" className="text-sm text-primary">
+          Наша история →
         </Link>
       </div>
-      {today.length ? (
-        today
-          .slice(0, 5)
-          .map((t) => <TaskCard key={t.id} task={t} data={data} />)
-      ) : (
-        <Card>
-          <EmptyState
-            title="Можно выдохнуть"
-            description="На сегодня нет активных дел. Новое дело можно создать в разделе «Дела»."
+      {!data.spaceId && <CoupleStatus />}
+      {pending.length > 0 && (
+        <section>
+          <SectionHeader
+            title="Партнёр предлагает"
+            description="Посмотрите, подходит ли это вам."
           />
-        </Card>
+          {pending.slice(0, 2).map((t) => (
+            <TaskCard key={t.id} task={t} data={data} />
+          ))}
+        </section>
       )}
-      <h2 className="font-semibold">Предложения вам</h2>
-      {pending.length ? (
-        pending.map((t) => <TaskCard key={t.id} task={t} data={data} />)
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          Новых предложений пока нет.
-        </p>
-      )}
-      <Card>
-        <h2 className="font-semibold">Последние достижения</h2>
-        {data.ledger.length ? (
-          <ul className="mt-3 space-y-3">
-            {data.ledger.slice(0, 5).map((l) => (
-              <li key={l.id} className="text-sm [overflow-wrap:anywhere]">
-                {l.title} ·{' '}
-                {l.kind === 'together'
-                  ? `+${l.together_xp} Together XP`
-                  : `+${l.xp} XP, +${l.coins} Coins`}
-              </li>
+      <section>
+        <SectionHeader
+          title="Немного заботы сегодня"
+          action={
+            <Link to="/tasks" className="text-sm text-primary">
+              Все дела →
+            </Link>
+          }
+        />
+        {today.length ? (
+          <div className="space-y-3">
+            {today.slice(0, 3).map((t) => (
+              <TaskCard key={t.id} task={t} data={data} />
             ))}
-          </ul>
+          </div>
         ) : (
-          <p className="mt-3 text-sm text-muted-foreground">
-            Первые маленькие победы ещё впереди.
+          <p className="text-sm text-muted-foreground">
+            В планах пока свободно. Можно выбрать одно небольшое дело.
           </p>
         )}
-      </Card>
+      </section>
+      <TodayRituals />
+      <details className="quiet-details">
+        <summary>Як ти сьогодні?</summary>
+        <TodayConnection />
+      </details>
+      <div className="surface-grid">
+        <Link className="path-card" to="/us/connection/game">
+          <span className="eyebrow">Час для двох</span>
+          <h2 className="font-semibold mt-2">Поговорим о нас?</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Один вопрос может стать началом вечера →
+          </p>
+        </Link>
+        <Link className="path-card" to="/us/connection/questionnaires">
+          <span className="eyebrow">Узнать ближе</span>
+          <h2 className="font-semibold mt-2">Сравнить взгляды</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Выберите тему для разговора →
+          </p>
+        </Link>
+      </div>
     </div>
   )
 }
+
 export function TogetherProgress() {
   const query = useTaskWorkspace()
   if (query.isPending) return <LoadingState />
@@ -530,9 +556,8 @@ export function TogetherProgress() {
       </p>
       <p className="text-sm text-muted-foreground">
         {query.data.hasPartner
-          ? 'Начисляется только после выполнения совместного экземпляра обоими участниками.'
-          : 'Партнёр пока не подключён. Личный прогресс доступен, совместные задания ждут второго участника.'}{' '}
-        Без рейтинга и сравнения.
+          ? 'Время, забота и маленькие шаги, которые вы разделили.'
+          : 'Пригласите партнёра, чтобы продолжить путь вместе.'}
       </p>
     </Card>
   )

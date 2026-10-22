@@ -71,7 +71,7 @@ try {
       url: origin.origin + '/us/connection/game',
     })
     await b.until(
-      `document.querySelector('main')?.textContent.includes('Запросити до нової гри')`,
+      `document.querySelector('main')?.textContent.includes('Почати гру')`,
     )
     assert.ok(
       !(await b.evaluate(
@@ -81,7 +81,26 @@ try {
     )
   }
   const [a, b] = browsers
-  await a.click('Запросити до нової гри')
+  for (const browser of browsers) {
+    for (const [path, title] of [
+      ['/', 'Сегодня'],
+      ['/tasks', 'Дела'],
+      ['/goals', 'Цели'],
+      ['/rewards', 'Награды'],
+      ['/us', 'Мы'],
+    ]) {
+      await browser.call('Page.navigate', { url: origin.origin + path })
+      await browser.until(
+        `document.querySelector('h1')?.textContent===${JSON.stringify(title)}`,
+      )
+    }
+  }
+  await a.call('Page.navigate', { url: origin.origin + '/us/connection/game' })
+  await a.until(
+    `document.querySelector('main')?.textContent.includes('Почати гру')`,
+  )
+
+  await a.click('Почати гру')
   await a.until(
     `Array.from(document.querySelectorAll('a')).some(a=>a.getAttribute('href')?.startsWith('/us/connection/session/'))`,
   )
@@ -94,12 +113,12 @@ try {
   await a.call('Page.navigate', { url: origin.origin + path })
   await a.click('Витягнути першу картку')
   await a.until(
-    `document.querySelector('main')?.textContent.includes('Картка 1 із 150')`,
+    `document.querySelector('.game-counter')?.textContent.replaceAll(' ','')==='1/150'`,
   )
   await b.evaluate('sessionStorage.clear()')
   await b.call('Page.reload')
   await b.until(
-    `document.querySelector('main')?.textContent.includes('Картка 1 із 150')`,
+    `document.querySelector('.game-counter')?.textContent.replaceAll(' ','')==='1/150'`,
   )
   assert.equal(
     await a.evaluate(
@@ -109,19 +128,53 @@ try {
       `document.querySelector('.romantic-question').textContent`,
     ),
   )
+  await b.call('Page.navigate', { url: origin.origin + '/us' })
+  await b.until(`document.querySelector('h1')?.textContent==='Мы'`)
+  await a.evaluate(
+    `document.querySelector('button[aria-label="Надіслати партнеру"]').click()`,
+  )
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (
+      check(await clients[1].rpc('connection_read', { p_view: 'home' })).data
+        .events.length
+    )
+      break
+    await new Promise((r) => setTimeout(r, 50))
+    if (attempt === 99) throw Error('View invitation not recorded')
+  }
+  await b.call('Page.navigate', { url: origin.origin + path + '?card=1' })
+  await b.until(`!!document.querySelector('.romantic-card')`)
+  await b.evaluate(
+    `document.querySelector('.romantic-card').scrollIntoView({block:'center'})`,
+  )
+  for (let attempt = 0; attempt < 150; attempt++) {
+    if (
+      check(await clients[1].rpc('connection_read', { p_view: 'home' })).data
+        .events.length === 0
+    )
+      break
+    await new Promise((r) => setTimeout(r, 50))
+    if (attempt === 149) throw Error('Visible invitation was not acknowledged')
+  }
+  assert.equal(
+    await b.evaluate(
+      `Array.from(document.querySelectorAll('button')).some(b=>b.textContent.includes('Позначити запрошення'))`,
+    ),
+    false,
+  )
   const answer = 'Нова локальна відповідь без хмарних даних'
   const fill = async () =>
     a.evaluate(
       `(()=>{const t=document.querySelector('textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(t,${JSON.stringify(answer)});t.dispatchEvent(new Event('input',{bubbles:true}))})()`,
     )
   await fill()
-  await a.click('Зберегти приватний чернетковий текст')
+  await a.click('Зберегти чернетку')
   await a.until(
     `document.querySelector('textarea')?.value===${JSON.stringify(answer)}`,
   )
   await b.call('Page.reload')
   await b.until(
-    `document.querySelector('main')?.textContent.includes('Картка 1 із 150')`,
+    `document.querySelector('.game-counter')?.textContent.replaceAll(' ','')==='1/150'`,
   )
   assert.equal(
     await b.evaluate(
@@ -133,7 +186,7 @@ try {
   await a.click('Надіслати відповідь')
   await b.call('Page.reload')
   await b.until(
-    `document.querySelector('main')?.textContent.includes('Картка 1 із 150')`,
+    `document.querySelector('.game-counter')?.textContent.replaceAll(' ','')==='1/150'`,
   )
   assert.equal(
     await b.evaluate(
@@ -151,7 +204,7 @@ try {
   )
   await Promise.all([a.click('Наступна картка'), b.click('Наступна картка')])
   await a.until(
-    `document.querySelector('main')?.textContent.includes('Картка 2 із 150')`,
+    `document.querySelector('.game-counter')?.textContent.replaceAll(' ','')==='2/150'`,
   )
   const current = check(
     await clients[0].rpc('connection_read', { p_view: 'session', p_id: id }),
@@ -160,9 +213,10 @@ try {
   assert.equal(current.remaining, 148)
   for (let i = 0; i < 2; i++) {
     await browsers[i].evaluate('sessionStorage.clear()')
-    await browsers[i].call('Page.reload')
+    // A deep link keeps showing its invited historical slot; open the live game explicitly.
+    await browsers[i].call('Page.navigate', { url: origin.origin + path })
     await browsers[i].until(
-      `document.querySelector('main')?.textContent.includes('Картка 2 із 150')`,
+      `document.querySelector('.game-counter')?.textContent.replaceAll(' ','')==='2/150'`,
     )
     const shot = await browsers[i].call('Page.captureScreenshot', {
       format: 'png',
@@ -172,12 +226,16 @@ try {
       Buffer.from(shot.data, 'base64'),
     )
   }
-  await b.click('Відмовитися від подальшої участі')
+  await b.evaluate(
+    `document.querySelector('button[aria-label="Налаштування гри"]').click()`,
+  )
+  await b.click('Завершити участь')
+  await b.click('Підтвердити')
   await b.until(
     `!document.querySelector('main')?.textContent.includes(${JSON.stringify(answer)})`,
   )
   await a.until(
-    `document.querySelector('main')?.textContent.includes('Завершено участь')`,
+    `document.querySelector('main')?.textContent.includes('Цю гру завершено')`,
   )
   assert.ok(
     await a.evaluate(
@@ -189,7 +247,7 @@ try {
   for (const browser of browsers) {
     await browser.call('Page.reload')
     await browser.until(
-      `document.querySelector('main')?.textContent.includes('Не вдалося виконати дію')`,
+      `document.querySelector('main')?.textContent.includes('Не вдалося зберегти')`,
     )
     assert.equal(
       await browser.evaluate(
@@ -199,7 +257,7 @@ try {
     )
   }
   console.log(
-    'PASS: two isolated local Auth accounts in Chromium; UI invitation, same active card, private persisted draft, blind publication, skip, concurrent next, lost sessionStorage/reload, closing shared history and leave',
+    'PASS: two isolated local Auth accounts in Chromium; five main routes, UI invitation and visible-card receipt, same active card, private persisted draft, blind publication, skip, concurrent next, lost sessionStorage/reload, closing shared history and leave',
   )
   console.log('Screenshots:', artifacts)
 } finally {

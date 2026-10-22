@@ -306,13 +306,12 @@ export function TodayRituals() {
           <Coffee size={20} aria-hidden="true" />
           Наши ритуалы
         </h2>
-        <Link to="/us#rituals" className="text-sm text-primary">
+        <Link to="/us/traditions" className="text-sm text-primary">
           Управлять
         </Link>
       </div>
       <p className="text-xs text-muted-foreground">
-        Небольшое время вместе, если хочется обоим. Календарь UTC, без XP и
-        Coins.
+        Время, которое вы выбрали друг для друга.
       </p>
       {rituals.length ? (
         rituals.map((r) => (
@@ -452,9 +451,7 @@ export function RitualsSection() {
         <Heart className="mb-2 text-primary" aria-hidden="true" />
         <h2 className="text-xl font-semibold">Наши ритуалы</h2>
         <p className="my-3 text-sm text-muted-foreground">
-          Добровольные встречи в вашем ритме. Любой вправе отказаться без
-          штрафа; согласие на прикосновение нужно каждый раз. История с другим
-          партнёром скрыта.
+          Встречи в вашем ритме. Выберите идею и предложите её партнёру.
         </p>
         {data?.partner_connected ? (
           <Button variant="outline" onClick={() => setCreating(!creating)}>
@@ -481,7 +478,7 @@ export function RitualsSection() {
         )}
       </Card>
       <div
-        className="flex gap-2 overflow-x-auto pb-1"
+        className="segmented-filters"
         role="group"
         aria-label="Фильтры ритуалов"
       >

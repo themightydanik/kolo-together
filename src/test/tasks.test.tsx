@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+vi.mock('../features/experience/screens', () => ({ TodayFocus: () => null }))
 import {
   cleanup,
   fireEvent,
@@ -23,7 +24,7 @@ import {
   weekStart,
   type TaskWorkspace,
 } from '../features/tasks/api'
-vi.mock('../features/rituals/screens',()=>({TodayRituals:()=>null}))
+vi.mock('../features/rituals/screens', () => ({ TodayRituals: () => null }))
 const workspaceQuery = vi.hoisted(() => vi.fn())
 vi.mock('../features/tasks/api', async (original) => ({
   ...(await original<typeof import('../features/tasks/api')>()),
@@ -330,8 +331,10 @@ test('task filters distinguish private, outgoing proposal, joint and completed i
 })
 test('today shows server progress and a safe SQL failure state', async () => {
   wrapper(<TodayScreen />)
-  expect(await screen.findByText('Рады видеть вас, Анна')).toBeVisible()
-  expect(screen.getByLabelText('Игровой прогресс')).toHaveTextContent('40')
+  expect(await screen.findByText('Рады видеть, Анна')).toBeVisible()
+  expect(screen.getByText('Наш общий путь').parentElement).toHaveTextContent(
+    '20',
+  )
   cleanup()
   workspaceQuery.mockReturnValue({
     isPending: false,

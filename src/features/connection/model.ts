@@ -96,7 +96,7 @@ export function connectionError(e: unknown) {
     return 'Запросіть партнера. Власний настрій можна зберігати вже зараз.'
   if (text === 'connection_not_ready')
     return 'Спочатку обидва завершують свою участь.'
-  return 'Не вдалося виконати дію. Оновіть дані та перевірте результат; внутрішні подробиці не показуються.'
+  return 'Не вдалося зберегти. Перевір зв’язок та онови дані.'
 }
 /** Not psychometrics: per-question ordinal distance or exact semantic option meaning. */
 export function compareAnswers(
